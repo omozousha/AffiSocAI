@@ -23,8 +23,17 @@ import { fetchOg, checkImageUrl } from "../core/shopee.ts";
 import { fetchBioItems, nextIds, importableItems, publishToBio } from "../core/biolink.ts";
 import { addLinksBulk, parseLinkBlob, normaliseLink } from "../core/add-link.ts";
 import {
-  listActivity,
-  listActivitySince,
+  listSlots,
+  schedulerStatus,
+  trendReport,
+  setSlotTimes,
+  setSchedulerEnabled,
+  ensureHorizon,
+  runSlotNow,
+  startScheduler,
+} from "../core/scheduler.ts";
+import {
+  listActivity, listActivitySince,
   dbLogMaxId,
   activityStats,
   logActivity,
@@ -179,6 +188,69 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/links") {
       return json(res, 200, { links: listLinks() });
+    }
+
+    // --- Scheduler -------------------------------------------------------
+    // 3 slots a day, in-process. These routes are status + control only: the
+    // actual publish is driven by the tick loop, so a POST here never blocks
+    // on a media upload.
+    if (req.method === "GET" && url.pathname === "/api/schedule") {
+      return json(res, 200, {
+        status: schedulerStatus(),
+        slots: listSlots({ date: url.searchParams.get("date") ?? undefined, limit: 100 }),
+        trend: trendReport(Number(url.searchParams.get("window") ?? 7) || 7),
+      });
+    }
+
+    /** slot_times, enabled, and a rolling horizon top-up. */
+    if (req.method === "POST" && url.pathname === "/api/schedule/config") {
+      const body = await readBody(req);
+      if (body.enabled !== undefined) setSchedulerEnabled(Boolean(body.enabled));
+      if (body.slot_times !== undefined) {
+        try {
+          setSlotTimes(String(body.slot_times).split(","));
+        } catch (e) {
+          return json(res, 400, { error: String(e).slice(0, 200) });
+        }
+        ensureHorizon(2);
+      }
+      return json(res, 200, { status: schedulerStatus() });
+    }
+
+    /**
+     * Publish one slot immediately, ignoring its scheduled time.
+     *   POST /api/schedule/run { "slot_id": 3 }
+     * Returns the slot after its outcome is stored, so the caller sees a
+     * `failed` status with the reason instead of a fake 200.
+     */
+    if (req.method === "POST" && url.pathname === "/api/schedule/run") {
+      const body = await readBody(req);
+      const id = Number(body.slot_id ?? url.searchParams.get("slot_id"));
+      if (!Number.isInteger(id) || id <= 0) return json(res, 400, { error: "slot_id is required" });
+      try {
+        const slot = await runSlotNow(id);
+        return json(res, slot.status === "published" ? 200 : 502, { slot });
+      } catch (e) {
+        return json(res, 409, { error: String(e).slice(0, 300) });
+      }
+    }
+
+    /** Rebuild today's (and tomorrow's) slots — used after editing slot_times. */
+    if (req.method === "POST" && url.pathname === "/api/schedule/refresh") {
+      return json(res, 200, { created: ensureHorizon(2), status: schedulerStatus() });
+    }
+
+    /** Live scheduler health — consumed by the Jadwal route's status dot. */
+    if (req.method === "GET" && url.pathname === "/api/schedule/health") {
+      const s = schedulerStatus();
+      const ready = s.platforms.filter((p) => p.ready);
+      return json(res, 200, {
+        ok: s.enabled && ready.length > 0,
+        enabled: s.enabled,
+        ready_platforms: ready.map((p) => p.slug),
+        next: s.next,
+        today_published: s.today.published,
+      });
     }
 
     /**
@@ -585,4 +657,13 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`affiliate-tools API on http://localhost:${PORT}`);
   console.log("providers:", listProviders().map((p) => `${p.slug}:${p.status}`).join("  "));
+  // Backfills the rolling horizon and starts the 60 s tick loop. Safe to call
+  // on every boot: slot_times and already-published slots are idempotent.
+  ensureHorizon(2);
+  startScheduler();
+  const st = schedulerStatus();
+  console.log(
+    `scheduler: ${st.enabled ? "enabled" : "paused"}  slots=${st.slot_times.join(",")}  ` +
+      `platforms=${st.platforms.filter((p) => p.ready).map((p) => p.slug).join(",") || "none"}`,
+  );
 });

@@ -6,11 +6,13 @@ import { linksRoute } from "./routes/links.js";
 import { kontenRoute } from "./routes/konten.js";
 import { sosmedRoute } from "./routes/sosmed.js";
 import { logsRoute } from "./routes/logs.js";
+import { jadwalRoute } from "./routes/jadwal.js";
 
 export const routes = {
   links: linksRoute,
   konten: kontenRoute,
   sosmed: sosmedRoute,
+  jadwal: jadwalRoute,
   logs: logsRoute,
 };
 

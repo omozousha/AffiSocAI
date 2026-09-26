@@ -354,6 +354,48 @@ tr.local td { background: #101a14; }
 
 .hidden { display: none !important; }
 
+/* ── Schedule route ───────────────────────────────────────────── */
+
+/* Only additions that no other route defines. `.btnrow`, `.chip`, `.stats`,
+   `.note`, `.stack`, `.row` already exist above and are reused as-is. */
+
+.btnrow input {
+  min-width: 0; flex: 1 1 12ch;
+  background: var(--sunken); border: 1px solid var(--line); color: var(--fg);
+  border-radius: 4px; padding: 4px 6px; font-size: 0.82rem;
+}
+.btnrow .muted { flex: 1 1 100%; }
+
+/* Trend bars: a fixed-height track with the number sitting outside it, so a
+   value of 1 and a value of 50 are both readable. */
+.bars { display: flex; flex-direction: column; gap: 5px; }
+.bar { display: grid; grid-template-columns: 3.5em 1fr 2.5em; align-items: center; gap: 8px; }
+.barlbl { color: var(--fg-dim); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.barfill {
+  height: 8px; min-width: 2px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent-dim, #2d5d3a), var(--accent, #3f8f5b));
+}
+.bar b { font-size: 0.78rem; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Status pills used by the slot table; `bad` marks failed/no-provider rows. */
+.stat.bad { border-color: #5a2222; color: #d08787; }
+.stat.bad b { color: #e8a3a3; }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg-dim); display: inline-block; }
+.dot.on { background: #4caf50; box-shadow: 0 0 6px #4caf5080; }
+.dot.bad { background: #c0392b; }
+
+/* Timestamps must never wrap mid-value: "26/09 09:00" breaks if it does. */
+.nowrap { white-space: nowrap; }
+
+/* Any button inside a dense table row. */
+button.small { padding: 2px 8px; font-size: 0.76rem; }
+
+/* Plain list used for top-links; strip the default marker indent. */
+ul.plain { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; }
+ul.plain li { padding: 3px 0; border-bottom: 1px solid var(--line-soft); }
+ul.plain li:last-child { border-bottom: 0; }
+
 @media (max-width: 620px) {
   .row { grid-template-columns: 1fr; }
   .res { flex-direction: column; }
