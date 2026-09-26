@@ -32,10 +32,26 @@ import {
   type ActivitySource,
 } from "../core/activity-log.ts";
 import { recreateProductImage } from "../core/recreate-image.ts";
+import { existsSync } from "node:fs";
+import {
+  loginThreads,
+  hasSession as hasThreadsSession,
+  THREADS_USERNAME,
+} from "../core/threads-browser.ts";
 import type { SocialContent } from "../core/types.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
+
+/** A password is configured when its file exists — the value is never read. */
+function threadsPasswordConfigured(): boolean {
+  const file = process.env.THREADS_PASSWORD_FILE;
+  return Boolean(file && existsSync(file)) || Boolean(process.env.THREADS_PASSWORD);
+}
+
+function envBool(name: string): boolean {
+  return /^(1|true|yes|on)$/i.test(String(process.env[name] || "").trim());
+}
 
 function json(res: import("node:http").ServerResponse, code: number, body: unknown) {
   const payload = JSON.stringify(body, null, 2);
@@ -400,6 +416,25 @@ const server = createServer(async (req, res) => {
       if (req.method === "GET" && parts[3] === "analytics" && parts[4]) {
         if (!provider.getAnalytics) return json(res, 501, { error: "analytics not implemented for this provider" });
         return json(res, 200, await provider.getAnalytics(parts[4]));
+      }
+
+      // Threads browser session: connect needs a visible Chromium window, which
+      // the web UI cannot own. The operator starts it, the profile then persists.
+      if (req.method === "POST" && parts[3] === "login" && parts[2] === "threads") {
+        const result = await loginThreads({ headless: envBool("THREADS_LOGIN_HEADLESS") });
+        logActivity(result.ok ? "info" : "warn", "sosmed", `threads login ${result.ok ? "ok" : "failed"}`, {
+          username: THREADS_USERNAME,
+          error: result.error,
+        });
+        return json(res, result.ok ? 200 : 502, result);
+      }
+
+      if (req.method === "GET" && parts[3] === "session" && parts[2] === "threads") {
+        return json(res, 200, {
+          live: hasThreadsSession(),
+          username: THREADS_USERNAME,
+          passwordConfigured: threadsPasswordConfigured(),
+        });
       }
     }
 

@@ -1,72 +1,85 @@
 /**
- * Threads adapter — BOUNDARY-DISABLED.
+ * Threads adapter — BROWSER-EXECUTED.
  *
- * Facts established 2026-09-25:
- *  - Composio has no `threads` toolkit. `composio tools list threads` returns
- *    0 bytes; six slug variants probed empty.
- *  - The facebook and instagram toolkits contain ZERO Threads actions — Meta
- *    OAuth scopes for Threads (threads_basic, threads_content_publish) are
- *    separate from Instagram/Facebook credentials and are not interchangeable.
- *  - The one available route is the `postpone` toolkit (7 tools), whose platform
- *    enum includes "threads". Postpone is a social-management platform, so the
- *    Threads account must be connected inside Postpone first; Composio then
- *    acts through the Postpone token.
+ * Composio has no Threads toolkit and Meta exposes no public posting API, so
+ * this provider publishes through the real Threads website, driven by the
+ * zero-dep CDP session in `threads-browser.ts`. The credential never enters
+ * source, chat, or logs; it is resolved from THREADS_PASSWORD_FILE at call
+ * time.
  *
- * Until `composio link postpone` has been completed, every capability is
- * disabled and the UI must not offer Threads publishing. The adapter exists so
- * the application shape is complete and flips on without refactoring.
+ * Until a login has been performed once (Chromium profile + session marker),
+ * the adapter stays BOUNDARY-DISABLED so the UI cannot offer a publish that
+ * would certainly fail. After login it reports VERIFIED-EXECUTED and enables
+ * text + image publishing, which are the two paths the browser composer
+ * actually supports.
  */
 
+import { hasSession, publishThreads, THREADS_USERNAME } from "../core/threads-browser.ts";
 import type {
-  PostStatus,
-  ProviderCapabilities,
   PublishResult,
   SocialAccount,
   SocialContent,
   SocialProvider,
   ValidationResult,
+  VerificationStatus,
 } from "../core/types.ts";
 
-const BLOCKED =
-  "Threads: no native Composio toolkit, and Meta OAuth scopes are not shared with " +
-  "Instagram/Facebook. Route is the `postpone` toolkit — run `composio link postpone` " +
-  "then connect the Threads account inside Postpone.";
+const LIVE = hasSession();
 
-const CAPABILITIES: ProviderCapabilities = {
-  textPost: false,
-  imagePost: false,
-  videoPost: false,
+const CAPABILITIES = {
+  textPost: LIVE,
+  imagePost: LIVE,
+  videoPost: false, // composer accepts video, but the file-input path is unverified
   carouselPost: false,
-  scheduledPost: false,
+  scheduledPost: false, // the web composer has no schedule control
   postStatus: false,
   analytics: false,
-  connect: false,
+  connect: true,
 };
+
+const NOT_LOGGED_IN =
+  "Threads browser session not established. Run the login once (visible Chromium window) " +
+  "so the session cookie is stored in the persistent profile; after that publishing works headless.";
 
 export class ThreadsAdapter implements SocialProvider {
   readonly slug = "threads";
   readonly displayName = "Threads";
   readonly capabilities = CAPABILITIES;
-  readonly status = "BOUNDARY-DISABLED";
-  readonly blockedReason = BLOCKED;
 
-  async connect(): Promise<void> {
-    throw new Error(BLOCKED);
+  get status(): VerificationStatus {
+    return LIVE ? "VERIFIED-EXECUTED" : "BOUNDARY-DISABLED";
   }
+
+  get blockedReason(): string | undefined {
+    return LIVE ? undefined : NOT_LOGGED_IN;
+  }
+
+  async connect(): Promise<void> {}
 
   async getAccount(): Promise<SocialAccount | null> {
-    return null;
+    if (!LIVE) return null;
+    return {
+      id: `threads:${THREADS_USERNAME}`,
+      username: THREADS_USERNAME,
+      displayName: `@${THREADS_USERNAME}`,
+      kind: "profile",
+    };
   }
 
-  async validateContent(_content: SocialContent): Promise<ValidationResult> {
-    return { ok: false, errors: [BLOCKED] };
+  validateContent(content: SocialContent): Promise<ValidationResult> {
+    const errors: string[] = [];
+    if (!content.text || !content.text.trim()) errors.push("Threads posts need text");
+    if (content.text && content.text.length > 500) errors.push("Threads text limit is 500 characters");
+    if (content.mediaKind === "video" || content.mediaKind === "carousel") {
+      errors.push("video and carousel are not supported by the Threads browser path");
+    }
+    if (!LIVE) errors.push(NOT_LOGGED_IN);
+    return Promise.resolve({ ok: errors.length === 0, errors });
   }
 
-  async publish(_content: SocialContent): Promise<PublishResult> {
-    return { ok: false, error: BLOCKED };
-  }
-
-  async getPostStatus(_postId: string): Promise<PostStatus> {
-    return { postId: _postId, state: "unknown", detail: BLOCKED };
+  async publish(content: SocialContent): Promise<PublishResult> {
+    const check = await this.validateContent(content);
+    if (!check.ok) return { ok: false, error: check.errors.join("; ") };
+    return publishThreads(content);
   }
 }
