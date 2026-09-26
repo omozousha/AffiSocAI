@@ -27,7 +27,6 @@ export const sosmedRoute = {
           <button data-act="run-check">Cek koneksi IG</button>
         </div>
         <div id="providers" class="stack"></div>
-        <div id="authlink" class="authlink hidden"></div>
       </section>
     </div>`,
 
@@ -51,11 +50,14 @@ export const sosmedRoute = {
       const blocked = p.blockedReason ? `<div class="why">${p.blockedReason}</div>` : "";
       const ops = ["textPost", "imagePost", "videoPost", "carouselPost", "scheduledPost", "analytics"]
         .map((k) => `${k}=${on(c[k])}`).join(" ");
+      // Threads uses OAuth: opening Meta's Authorization Window in a new tab
+      // and letting the callback finish on our own domain. No cookie capture,
+      // no password in the browser, nothing in the page that could leak a token.
       const connectBtn =
         p.slug === "threads"
-          ? `<button data-act="threads-link">Buat link auth</button>
-             <button data-act="threads-session">Cek sesi</button>
-             <button data-act="threads-reset">Reset sesi</button>`
+          ? `<button data-act="threads-authorize">Hubungkan Threads</button>
+             <button data-act="threads-session">Cek koneksi</button>
+             <button data-act="threads-reset">Putuskan</button>`
           : "";
       return `<div class="provider" data-slug="${p.slug}">
         <div class="head"><h3>${p.displayName}</h3>${statusTag}</div>
@@ -75,36 +77,28 @@ export const sosmedRoute = {
       const act = btn.getAttribute("data-act");
 
       // Threads-only actions: they are not provider-crud routes.
-      if (act === "threads-link" || act === "threads-session" || act === "threads-reset") {
-        out.classList.remove("hidden");
-        out.textContent =
-          act === "threads-link" ? "membuat link auth…"
-          : act === "threads-reset" ? "menghapus sesi…"
-          : "cek sesi…";
-        const r =
-          act === "threads-link"
-            ? await api("/api/providers/threads/auth-link", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
-            : act === "threads-reset"
-            ? await api("/api/providers/threads/reset", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
-            : await api("/api/providers/threads/session");
-        show(out, r);
-
-        // Show the link in the static result box (survives the re-render of
-        // the provider matrix below).
-        const box = view.querySelector("#authlink");
-        if (act === "threads-link" && r.status === 200 && r.body?.url) {
-          const exp = new Date(r.body.expiresAt).toLocaleTimeString("id-ID", { hour12: false });
-          box.classList.remove("hidden");
-          box.innerHTML =
-            `<p>Buka di browser yang sudah login Threads:</p>
-             <a class="auth-url" href="${r.body.url}" target="_blank" rel="noopener">${r.body.url}</a>
-             <p class="hint">Berlaku 15 menit (exp ${exp}), sekali pakai. Di halaman itu klik “Menangkap sesi Threads”.</p>`;
+      if (act === "threads-authorize" || act === "threads-session" || act === "threads-reset") {
+        if (act === "threads-authorize") {
+          // Opening a new tab is what the whole flow needs: the operator
+          // approves on Meta, Meta redirects back to our own callback route,
+          // and the token exchange happens server-side. Nothing sensitive
+          // comes back into this page.
+          const r = await api("/api/providers/threads/authorize");
+          show(out, r);
+          if (r.status === 200 && r.body?.url) {
+            window.open(r.body.url, "_blank", "noopener");
+          }
         } else {
-          box.classList.add("hidden");
-          box.innerHTML = "";
+          out.classList.remove("hidden");
+          out.textContent = act === "threads-reset" ? "memutuskan…" : "mengecek…";
+          const r =
+            act === "threads-reset"
+              ? await api("/api/providers/threads/reset", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+              : await api("/api/providers/threads/session");
+          show(out, r);
         }
 
-        // Refresh the matrix so the tag flips LIVE once the session is live.
+        // Refresh the matrix so the tag flips LIVE once the connection is live.
         const fresh = await api("/api/providers");
         el("#providers").innerHTML = fresh.body.providers.map(providerRows).join("");
         for (const b of el("#providers").querySelectorAll("button[data-act]")) b.onclick = () => handle(b);

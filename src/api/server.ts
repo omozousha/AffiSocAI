@@ -43,39 +43,49 @@ import {
 } from "../core/activity-log.ts";
 import { recreateProductImage } from "../core/recreate-image.ts";
 import { IMAGE_PRESETS, DEFAULT_PRESET } from "../core/image-presets.ts";
-import { existsSync, readFileSync } from "node:fs";
-import {
-  loginThreads,
-  hasSession as hasThreadsSession,
-  THREADS_USERNAME,
-} from "../core/threads-browser.ts";
-import {
-  createAuthLink,
-  validateAuthToken,
-  storeCapturedCookies,
-  clearCapturedSession,
-  capturedCookieNames,
-  type CapturedCookie,
-} from "../core/threads-auth.ts";
+import { authorizeUrl, exchangeCode, clearThreadsToken } from "../providers/threads.ts";
 import type { SocialContent } from "../core/types.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
 
-/** A password is configured when its file exists — the value is never read. */
-function threadsPasswordConfigured(): boolean {
-  const file = process.env.THREADS_PASSWORD_FILE;
-  return Boolean(file && existsSync(file)) || Boolean(process.env.THREADS_PASSWORD);
-}
-
 function envBool(name: string): boolean {
   return /^(1|true|yes|on)$/i.test(String(process.env[name] || "").trim());
+}
+
+/** Escapes untrusted text before it lands in the authorize page. */
+function escapeHtml(s: string): string {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;",
+  );
+}
+
+/** Small standalone page shown after Meta redirects the callback. */
+function authorizePage(title: string, message: string): string {
+  return `<!doctype html><html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(title)} · Threads</title>
+<style>
+:root{color-scheme:dark}
+body{margin:0;display:grid;place-items:center;min-height:100vh;background:#0b0e14;
+     color:#e8ecf4;font:15px/1.5 system-ui,-apple-system,sans-serif}
+.c{max-width:22rem;padding:2rem;text-align:center}
+h1{font-size:1.15rem;margin:0 0 .5rem}
+p{margin:0;color:#9aa5b8}
+</style></head><body><div class="c">
+<h1>${escapeHtml(title)}</h1><p>${message}</p>
+</div></body></html>`;
 }
 
 function json(res: import("node:http").ServerResponse, code: number, body: unknown) {
   const payload = JSON.stringify(body, null, 2);
   res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
-  res.end(payload);
+  return res.end(payload);
+}
+
+function html(res: import("node:http").ServerResponse, code: number, markup: string) {
+  res.writeHead(code, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  return res.end(markup);
 }
 
 async function readBody(req: import("node:http").IncomingMessage): Promise<SocialContent> {
@@ -505,53 +515,54 @@ const server = createServer(async (req, res) => {
       });
     }
 
-    // --- Threads capture-link flow (no password on the server) -----------
+    // --- Threads connect (Meta Threads API, OAuth 2.0) ---------------
     // Placed before the /api/providers block: those routes 404 unknown slugs,
-    // and "threads-auth" is not a provider slug.
-    if (req.method === "POST" && url.pathname === "/api/providers/threads/auth-link") {
-      const ticket = createAuthLink(`https://${req.headers.host || `localhost:${PORT}`}`);
-      logActivity("info", "sosmed", "threads auth-link minted", {
-        username: THREADS_USERNAME,
-        expiresAt: ticket.expiresAt,
-      });
-      return json(res, 200, ticket);
+    // and these are not provider-crud routes.
+    //
+    // The old flow captured a browser cookie. It cannot work: Meta marks
+    // `sessionid` HttpOnly, so the capture page's `document.cookie` never sees
+    // it, and the automated login this headless host would need is refused by
+    // Meta's device check. The API path uses a refreshable token stored 0600
+    // outside the repo, which both problems are solved by.
+    if (req.method === "GET" && url.pathname === "/api/providers/threads/authorize") {
+      const r = authorizeUrl();
+      if ("error" in r) return json(res, 503, { error: r.error });
+      logActivity("info", "sosmed", "threads authorization window minted", {});
+      return json(res, 200, r);
     }
 
-    // Clears the captured session so the operator can capture again.
-    if (req.method === "POST" && url.pathname === "/api/providers/threads/reset") {
-      const cleared = clearCapturedSession();
-      return json(res, 200, { ok: true, cleared });
-    }
-
-    if (req.method === "GET" && url.pathname === "/api/threads-auth") {
-      const token = url.searchParams.get("t") || "";
-      if (!validateAuthToken(token)) {
-        return json(res, 403, { error: "link invalid or expired — mint a fresh one from Sosmed" });
+    // Meta redirects here with ?code=… once the operator approves.
+    if (req.method === "GET" && url.pathname === "/api/providers/threads/callback") {
+      const code = url.searchParams.get("code") || "";
+      const err = url.searchParams.get("error");
+      if (err) {
+        logActivity("warn", "sosmed", "threads authorization refused", { error: err });
+        return html(res, 200, authorizePage("Dibatalkan", "Authorisasi dibatalkan. Tutup halaman ini lalu coba lagi."));
       }
-      const html = readFileSync(join(HERE, "..", "..", "public", "threads-auth.html"), "utf8");
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-      res.end(html);
-      return;
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/threads-auth/capture") {
-      const body = (await readBody(req).catch(() => null)) as
-        | { token?: string; cookies?: CapturedCookie[] }
-        | null;
-      if (!body) return json(res, 400, { error: "invalid json body" });
-      const result = storeCapturedCookies(
-        body.token || "",
-        Array.isArray(body.cookies) ? body.cookies : [],
-      );
+      if (!code) {
+        return html(res, 400, authorizePage("Tidak ada kode", "Meta tidak mengirim kode otorisasi. Coba lagi dari Sosmed."));
+      }
+      const result = await exchangeCode(code);
       if (!result.ok) {
-        logActivity("warn", "sosmed", "threads capture rejected", { error: result.error });
-        return json(res, 422, result);
+        logActivity("warn", "sosmed", "threads token exchange failed", { error: result.error });
+        return html(res, 502, authorizePage("Gagal", escapeHtml(result.error ?? "token exchange gagal")));
       }
-      logActivity("info", "sosmed", "threads session captured", {
-        cookieCount: result.cookieCount,
-        names: capturedCookieNames(),
+      const account = await getProvider("threads")?.getAccount();
+      logActivity("info", "sosmed", "threads connected", {
+        username: account?.username ?? null,
+        accountId: account?.id ?? null,
       });
-      return json(res, 200, { ...result, live: true, username: THREADS_USERNAME });
+      return html(res, 200, authorizePage(
+        "Terhubung",
+        account?.username ? `Threads @${escapeHtml(account.username)} siap posting.` : "Threads terhubung.",
+      ));
+    }
+
+    // Clears the connection so the operator can re-authorise.
+    if (req.method === "POST" && url.pathname === "/api/providers/threads/reset") {
+      const cleared = clearThreadsToken();
+      logActivity("info", "sosmed", "threads connection cleared", { cleared });
+      return json(res, 200, { ok: true, cleared });
     }
 
     if (parts[0] === "api" && parts[1] === "providers") {
@@ -580,24 +591,17 @@ const server = createServer(async (req, res) => {
         return json(res, 200, await provider.getAnalytics(parts[4]));
       }
 
-      // Threads browser session: connect needs a visible Chromium window, which
-      // the web UI cannot own. The operator starts it, the profile then persists.
-      if (req.method === "POST" && parts[3] === "login" && parts[2] === "threads") {
-        const result = await loginThreads({ headless: envBool("THREADS_LOGIN_HEADLESS") });
-        logActivity(result.ok ? "info" : "warn", "sosmed", `threads login ${result.ok ? "ok" : "failed"}`, {
-          username: THREADS_USERNAME,
-          error: result.error,
-        });
-        return json(res, result.ok ? 200 : 502, result);
-      }
-
+      // Threads uses OAuth, not a browser session. The connection state is
+      // derived from the stored token, and the UI's "Hubungkan" button calls
+      // GET /api/providers/threads/authorize.
       if (req.method === "GET" && parts[3] === "session" && parts[2] === "threads") {
-        const names = capturedCookieNames();
+        const p = getProvider("threads");
+        const account = await p?.getAccount();
         return json(res, 200, {
-          live: names.length > 0,
-          username: THREADS_USERNAME,
-          cookieCount: names.length,
-          cookies: names,
+          live: Boolean(account),
+          username: account?.username ?? null,
+          connected: Boolean(account),
+          blockedReason: p?.blockedReason ?? null,
         });
       }
     }
