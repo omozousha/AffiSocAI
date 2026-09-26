@@ -19,6 +19,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Cdp } from "./cdp.ts";
+import { loadCookiesForInjection } from "./threads-auth.ts";
 import type { PublishResult, SocialContent } from "./types.ts";
 
 const HOME = join(process.env.HOME || "/root", ".affiliate-tools");
@@ -139,20 +140,30 @@ export async function loginThreads(opts: { headless?: boolean; keepOpen?: boolea
 /**
  * Publishes a text/image post through the Threads web composer.
  *
+ * Identity comes from the cookies the operator captured via /api/threads-auth,
+ * injected through CDP before the first navigation. The password never reaches
+ * this process.
+ *
  * Threads has no image URL posting: media must be a real file, so an image
  * mediaUrl is fetched to disk first and pushed through the file input. Text is
  * set by React-safe value assignment.
  */
 export async function publishThreads(content: SocialContent): Promise<PublishResult> {
-  if (!existsSync(THREADS_PROFILE_DIR)) {
-    return { ok: false, error: "no Threads browser profile — run login first" };
+  const cookies = loadCookiesForInjection();
+  if (cookies.length === 0) {
+    return { ok: false, error: "no captured Threads session — capture it first (Sosmed → Threads → Buat link auth)" };
   }
 
   const cdp = await new Cdp({ profileDir: THREADS_PROFILE_DIR, headless: true }).start();
   try {
+    // Cookies must be set before any document on the target origin, so land on
+    // the origin root first and inject there.
+    await cdp.goto("https://www.threads.com/", 1500);
+    await cdp.setCookies(cookies as Parameters<Cdp["setCookies"]>[0]);
+
     const live = await isLoggedIn(cdp);
     if (!live) {
-      return { ok: false, error: "Threads session is not live — re-run login (browser profile may have expired)" };
+      return { ok: false, error: "Threads session is not live — captured cookie may have expired; capture again" };
     }
 
     // Open the composer directly; the site routes /new-post to the compose view.

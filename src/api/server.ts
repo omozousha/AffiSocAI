@@ -18,6 +18,7 @@ import { getProvider, listProviders } from "../core/registry.ts";
 import { composio } from "../core/composio.ts";
 import { addLink, addContent, listContent, listLinks, getLink, getLinkBySheetId, enrichLink } from "../core/store.ts";
 import { buildTemplates, productName } from "../core/templates.ts";
+import { buildMysteryCaption, mysteryKind, MYSTERY_PLATFORMS, type MysteryDraft } from "../core/mystery-caption.ts";
 import { fetchOg, checkImageUrl } from "../core/shopee.ts";
 import { fetchBioItems, nextIds, importableItems, publishToBio } from "../core/biolink.ts";
 import { addLinksBulk, parseLinkBlob, normaliseLink } from "../core/add-link.ts";
@@ -32,12 +33,21 @@ import {
   type ActivitySource,
 } from "../core/activity-log.ts";
 import { recreateProductImage } from "../core/recreate-image.ts";
-import { existsSync } from "node:fs";
+import { IMAGE_PRESETS, DEFAULT_PRESET } from "../core/image-presets.ts";
+import { existsSync, readFileSync } from "node:fs";
 import {
   loginThreads,
   hasSession as hasThreadsSession,
   THREADS_USERNAME,
 } from "../core/threads-browser.ts";
+import {
+  createAuthLink,
+  validateAuthToken,
+  storeCapturedCookies,
+  clearCapturedSession,
+  capturedCookieNames,
+  type CapturedCookie,
+} from "../core/threads-auth.ts";
 import type { SocialContent } from "../core/types.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -121,13 +131,24 @@ const server = createServer(async (req, res) => {
    * Everything else falls through to the API handlers below.
    */
   if (req.method === "GET" && !url.pathname.startsWith("/api/")) {
+    // url.pathname never includes the query, so "?v=2" cache-busters resolve
+    // to the real file on disk.
     const rel = url.pathname === "/" ? "/index.html" : url.pathname;
-    const file = join(HERE, "..", "..", "public", rel);
-    const inside = file.startsWith(join(HERE, "..", "..", "public") + "/");
+    const pub = join(HERE, "..", "..", "public");
+    const file = join(pub, rel);
+    const inside = file.startsWith(pub + "/");
     if (!inside) return json(res, 403, { error: "forbidden" });
     try {
       const buf = await readFile(file);
-      res.writeHead(200, { "content-type": mimeOf(file) });
+      // HTML and JS/CSS route modules are no-store: Cloudflare in front of this
+      // origin plus browser heuristics otherwise serve stale UI after a deploy.
+      const noStore = /\.(html|js|css)$/.test(file);
+      res.writeHead(200, {
+        "content-type": mimeOf(file),
+        "cache-control": noStore
+          ? "no-store, no-cache, must-revalidate, max-age=0"
+          : "public, max-age=86400",
+      });
       return res.end(buf);
     } catch {
       /* not a static file — fall through to the API routes */
@@ -392,6 +413,75 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { drafts: drafts.map((d) => ({ ...d, status: "not-persisted" })) });
     }
 
+    /** Mystery drafts: same data, product name withheld from the caption. */
+    if (req.method === "POST" && url.pathname === "/api/content/mystery") {
+      const body = await readBody(req);
+      const link = getLink(Number(body.link_id));
+      if (!link) return json(res, 404, { error: `no link with id ${body.link_id}` });
+      const platforms = Array.isArray(body.platforms) && body.platforms.length ? body.platforms : MYSTERY_PLATFORMS;
+      const drafts = platforms.map((p: MysteryDraft["platform"]) => buildMysteryCaption(p, link));
+      const mediaUrl = link.image_url ?? null;
+      return json(res, 200, {
+        drafts: drafts.map((d) => ({
+          ...d,
+          kind: mysteryKind(mediaUrl),
+          media_url: mediaUrl,
+          linkPlacement: "bio",
+          firstComment: null,
+          status: "not-persisted",
+        })),
+      });
+    }
+
+    // --- Threads capture-link flow (no password on the server) -----------
+    // Placed before the /api/providers block: those routes 404 unknown slugs,
+    // and "threads-auth" is not a provider slug.
+    if (req.method === "POST" && url.pathname === "/api/providers/threads/auth-link") {
+      const ticket = createAuthLink(`https://${req.headers.host || `localhost:${PORT}`}`);
+      logActivity("info", "sosmed", "threads auth-link minted", {
+        username: THREADS_USERNAME,
+        expiresAt: ticket.expiresAt,
+      });
+      return json(res, 200, ticket);
+    }
+
+    // Clears the captured session so the operator can capture again.
+    if (req.method === "POST" && url.pathname === "/api/providers/threads/reset") {
+      const cleared = clearCapturedSession();
+      return json(res, 200, { ok: true, cleared });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/threads-auth") {
+      const token = url.searchParams.get("t") || "";
+      if (!validateAuthToken(token)) {
+        return json(res, 403, { error: "link invalid or expired — mint a fresh one from Sosmed" });
+      }
+      const html = readFileSync(join(HERE, "..", "..", "public", "threads-auth.html"), "utf8");
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      res.end(html);
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/threads-auth/capture") {
+      const body = (await readBody(req).catch(() => null)) as
+        | { token?: string; cookies?: CapturedCookie[] }
+        | null;
+      if (!body) return json(res, 400, { error: "invalid json body" });
+      const result = storeCapturedCookies(
+        body.token || "",
+        Array.isArray(body.cookies) ? body.cookies : [],
+      );
+      if (!result.ok) {
+        logActivity("warn", "sosmed", "threads capture rejected", { error: result.error });
+        return json(res, 422, result);
+      }
+      logActivity("info", "sosmed", "threads session captured", {
+        cookieCount: result.cookieCount,
+        names: capturedCookieNames(),
+      });
+      return json(res, 200, { ...result, live: true, username: THREADS_USERNAME });
+    }
+
     if (parts[0] === "api" && parts[1] === "providers") {
       const slug = parts[2];
       const provider = getProvider(slug);
@@ -430,10 +520,12 @@ const server = createServer(async (req, res) => {
       }
 
       if (req.method === "GET" && parts[3] === "session" && parts[2] === "threads") {
+        const names = capturedCookieNames();
         return json(res, 200, {
-          live: hasThreadsSession(),
+          live: names.length > 0,
           username: THREADS_USERNAME,
-          passwordConfigured: threadsPasswordConfigured(),
+          cookieCount: names.length,
+          cookies: names,
         });
       }
     }
@@ -443,9 +535,14 @@ const server = createServer(async (req, res) => {
       const link = getLink(id);
       if (!link) return json(res, 404, { error: `no link with id ${id}` });
       if (!link.image_url) return json(res, 400, { error: "link has no image_url to recreate" });
-      const body = (await readBody(req)) as { prompt?: string };
-      const out = await recreateProductImage(link, body.prompt);
+      const body = (await readBody(req)) as { prompt?: string; preset?: string };
+      const out = await recreateProductImage(link, body.prompt, body.preset);
       return json(res, out.ok ? 200 : 502, out);
+    }
+
+    /** Preset list for the image-recreate picker in the UI. */
+    if (req.method === "GET" && url.pathname === "/api/image-presets") {
+      return json(res, 200, { presets: IMAGE_PRESETS, default: DEFAULT_PRESET });
     }
 
     /** Serve recreated images out of data/images/:file. */

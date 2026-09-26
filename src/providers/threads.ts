@@ -3,18 +3,21 @@
  *
  * Composio has no Threads toolkit and Meta exposes no public posting API, so
  * this provider publishes through the real Threads website, driven by the
- * zero-dep CDP session in `threads-browser.ts`. The credential never enters
- * source, chat, or logs; it is resolved from THREADS_PASSWORD_FILE at call
- * time.
+ * zero-dep CDP session in `threads-browser.ts`.
  *
- * Until a login has been performed once (Chromium profile + session marker),
- * the adapter stays BOUNDARY-DISABLED so the UI cannot offer a publish that
- * would certainly fail. After login it reports VERIFIED-EXECUTED and enables
- * text + image publishing, which are the two paths the browser composer
- * actually supports.
+ * Credential path is deliberately indirect: no password is ever held by this
+ * server. The operator establishes the session once from their own browser via
+ * `/api/threads-auth`, and `hasCapturedSession()` decides whether the adapter
+ * is live. The captured cookie names (never their values) are surfaced for
+ * diagnosis.
  */
 
-import { hasSession, publishThreads, THREADS_USERNAME } from "../core/threads-browser.ts";
+import { publishThreads, THREADS_USERNAME } from "../core/threads-browser.ts";
+import {
+  capturedCookieNames,
+  hasCapturedSession,
+  sessionFingerprint,
+} from "../core/threads-auth.ts";
 import type {
   PublishResult,
   SocialAccount,
@@ -24,40 +27,52 @@ import type {
   VerificationStatus,
 } from "../core/types.ts";
 
-const LIVE = hasSession();
-
-const CAPABILITIES = {
-  textPost: LIVE,
-  imagePost: LIVE,
-  videoPost: false, // composer accepts video, but the file-input path is unverified
-  carouselPost: false,
-  scheduledPost: false, // the web composer has no schedule control
-  postStatus: false,
-  analytics: false,
-  connect: true,
-};
-
-const NOT_LOGGED_IN =
-  "Threads browser session not established. Run the login once (visible Chromium window) " +
-  "so the session cookie is stored in the persistent profile; after that publishing works headless.";
+const NO_SESSION =
+  "Threads session not captured. In Sosmed → Threads → “Buat link auth”, buka link itu " +
+  "di browser yang sudah login Threads, lalu klik “Menangkap sesi Threads”. " +
+  "Password tidak pernah dikirim ke server ini.";
 
 export class ThreadsAdapter implements SocialProvider {
   readonly slug = "threads";
   readonly displayName = "Threads";
-  readonly capabilities = CAPABILITIES;
+
+  get capabilities() {
+    const live = hasCapturedSession();
+    return {
+      textPost: live,
+      imagePost: live,
+      videoPost: false, // composer accepts video, but the file-input path is unverified
+      carouselPost: false,
+      scheduledPost: false, // the web composer has no schedule control
+      postStatus: false,
+      analytics: false,
+      connect: true,
+    };
+  }
 
   get status(): VerificationStatus {
-    return LIVE ? "VERIFIED-EXECUTED" : "BOUNDARY-DISABLED";
+    return hasCapturedSession() ? "VERIFIED-EXECUTED" : "BOUNDARY-DISABLED";
   }
 
   get blockedReason(): string | undefined {
-    return LIVE ? undefined : NOT_LOGGED_IN;
+    if (hasCapturedSession()) return undefined;
+    return NO_SESSION;
+  }
+
+  /** Diagnostic breadcrumb — cookie names only, values never leave the store. */
+  get sessionInfo() {
+    return {
+      live: hasCapturedSession(),
+      username: THREADS_USERNAME,
+      cookieNames: capturedCookieNames(),
+      fingerprint: sessionFingerprint(),
+    };
   }
 
   async connect(): Promise<void> {}
 
   async getAccount(): Promise<SocialAccount | null> {
-    if (!LIVE) return null;
+    if (!hasCapturedSession()) return null;
     return {
       id: `threads:${THREADS_USERNAME}`,
       username: THREADS_USERNAME,
@@ -73,7 +88,7 @@ export class ThreadsAdapter implements SocialProvider {
     if (content.mediaKind === "video" || content.mediaKind === "carousel") {
       errors.push("video and carousel are not supported by the Threads browser path");
     }
-    if (!LIVE) errors.push(NOT_LOGGED_IN);
+    if (!hasCapturedSession()) errors.push(NO_SESSION);
     return Promise.resolve({ ok: errors.length === 0, errors });
   }
 

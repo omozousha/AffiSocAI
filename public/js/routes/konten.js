@@ -22,6 +22,13 @@ export const kontenRoute = {
             </select>
           </div>
           <div>
+            <label for="kontenMode">Mode caption</label>
+            <select id="kontenMode">
+              <option value="mystery" selected>Mystery (nama produk disembunyikan)</option>
+              <option value="direct">Direct (nama produk disebut)</option>
+            </select>
+          </div>
+          <div>
             <label>&nbsp;</label>
             <div class="btnrow">
               <button id="btnGenKonten" class="primary">Generate caption</button>
@@ -29,6 +36,7 @@ export const kontenRoute = {
             </div>
           </div>
         </div>
+        <div class="note">Mystery: nama produk tidak muncul di caption, link tetap di bio. Direct menyebut nama — klaim harga/ongkir tetap tidak dibuat otomatis.</div>
         <div id="kontenOut" style="margin-top:10px"></div>
         <pre class="out hidden" id="kontenLog"></pre>
       `)}
@@ -49,7 +57,8 @@ export const kontenRoute = {
       const linkId = Number(el("#kontenLinkId").value);
       const out = el("#kontenOut");
       if (!linkId) { out.innerHTML = `<div class="bad">isikan Link ID dulu</div>`; return; }
-      const r = await api("/api/content/generate", {
+      const mode = el("#kontenMode").value;
+      const r = await api(mode === "mystery" ? "/api/content/mystery" : "/api/content/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ link_id: linkId, platforms: Platforms() }),

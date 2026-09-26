@@ -36,6 +36,8 @@ export const linksRoute = {
         <div class="btnrow" style="margin-bottom:8px">
           <button data-act="refresh-links">Refresh</button>
           <button data-act="to-konten">Buka Konten AI</button>
+          <span class="lbl">Format gambar:</span>
+          <select id="presetSel"></select>
         </div>
         <div class="table-wrap"><table id="linkTable"></table></div>
         <pre class="out hidden" id="rowOut"></pre>
@@ -44,6 +46,16 @@ export const linksRoute = {
 
   async mount(view) {
     const el = (s) => view.querySelector(s);
+
+    // Preset picker: options come from the server so the label list stays in
+    // one place (src/core/image-presets.ts).
+    api("/api/image-presets").then((r) => {
+      const sel = el("#presetSel");
+      if (!sel || !r.body?.presets) return;
+      sel.innerHTML = r.body.presets
+        .map((p) => `<option value="${esc(p.id)}" ${p.id === r.body.default ? "selected" : ""}>${esc(p.label)}</option>`)
+        .join("");
+    }).catch(() => {});
 
     function parseLinks() {
       return el("#linksIn").value.split(/[\n,;\s]+/).map((s) => s.trim()).filter(Boolean);
@@ -160,8 +172,10 @@ export const linksRoute = {
         btn.disabled = true; btn.textContent = "Generating…";
         out.hidden = false; out.textContent = "recreate jalan (bisa 10–60s)…";
         try {
+          const preset = el("#presetSel")?.value || "";
           const r = await api(`/api/links/${id}/recreate-image`, {
-            method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify(preset ? { preset } : {}),
           });
           show(out, r);
           const img = r.body?.image?.file;

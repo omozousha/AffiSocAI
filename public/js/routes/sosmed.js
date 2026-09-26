@@ -27,6 +27,7 @@ export const sosmedRoute = {
           <button data-act="run-check">Cek koneksi IG</button>
         </div>
         <div id="providers" class="stack"></div>
+        <div id="authlink" class="authlink hidden"></div>
       </section>
     </div>`,
 
@@ -52,8 +53,9 @@ export const sosmedRoute = {
         .map((k) => `${k}=${on(c[k])}`).join(" ");
       const connectBtn =
         p.slug === "threads"
-          ? `<button data-act="threads-login">Login Threads</button>
-             <button data-act="threads-session">Cek sesi</button>`
+          ? `<button data-act="threads-link">Buat link auth</button>
+             <button data-act="threads-session">Cek sesi</button>
+             <button data-act="threads-reset">Reset sesi</button>`
           : "";
       return `<div class="provider" data-slug="${p.slug}">
         <div class="head"><h3>${p.displayName}</h3>${statusTag}</div>
@@ -73,15 +75,35 @@ export const sosmedRoute = {
       const act = btn.getAttribute("data-act");
 
       // Threads-only actions: they are not provider-crud routes.
-      if (act === "threads-login" || act === "threads-session") {
+      if (act === "threads-link" || act === "threads-session" || act === "threads-reset") {
         out.classList.remove("hidden");
-        out.textContent = act === "threads-login"
-          ? "membuka jendela login Threads… selesaikan verifikasi bila muncul."
+        out.textContent =
+          act === "threads-link" ? "membuat link auth…"
+          : act === "threads-reset" ? "menghapus sesi…"
           : "cek sesi…";
-        const r = act === "threads-login"
-          ? await api("/api/providers/threads/login", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
-          : await api("/api/providers/threads/session");
+        const r =
+          act === "threads-link"
+            ? await api("/api/providers/threads/auth-link", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+            : act === "threads-reset"
+            ? await api("/api/providers/threads/reset", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+            : await api("/api/providers/threads/session");
         show(out, r);
+
+        // Show the link in the static result box (survives the re-render of
+        // the provider matrix below).
+        const box = view.querySelector("#authlink");
+        if (act === "threads-link" && r.status === 200 && r.body?.url) {
+          const exp = new Date(r.body.expiresAt).toLocaleTimeString("id-ID", { hour12: false });
+          box.classList.remove("hidden");
+          box.innerHTML =
+            `<p>Buka di browser yang sudah login Threads:</p>
+             <a class="auth-url" href="${r.body.url}" target="_blank" rel="noopener">${r.body.url}</a>
+             <p class="hint">Berlaku 15 menit (exp ${exp}), sekali pakai. Di halaman itu klik “Menangkap sesi Threads”.</p>`;
+        } else {
+          box.classList.add("hidden");
+          box.innerHTML = "";
+        }
+
         // Refresh the matrix so the tag flips LIVE once the session is live.
         const fresh = await api("/api/providers");
         el("#providers").innerHTML = fresh.body.providers.map(providerRows).join("");

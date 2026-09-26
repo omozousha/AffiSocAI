@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import type { LinkRow } from "./store.ts";
 import { recreateImage, generateImage } from "./router-image.ts";
 import { updateLinkImage } from "./store.ts";
+import { presetPrompt, DEFAULT_PRESET, findPreset } from "./image-presets.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.AFFILIATE_DATA_DIR || join(HERE, "..", "..", "data");
@@ -30,7 +31,16 @@ const IMAGE_DIR = process.env.AFFILIATE_IMAGE_DIR || join(DATA_DIR, "images");
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 
 export type RecreateResult =
-  | { ok: true; path: string; file: string; served_url: string; prompt: string; mode: "image-to-image" | "text-to-image" }
+  | {
+      ok: true;
+      path: string;
+      file: string;
+      served_url: string;
+      prompt: string;
+      mode: "image-to-image" | "text-to-image";
+      preset: string;
+      aspect: string;
+    }
   | { ok: false; error: string };
 
 /**
@@ -85,8 +95,17 @@ function sniff(buf: Buffer): string | null {
  * `image_url` is updated to the local served path, so the bio page and the
  * content generator both pick up the recreated image later.
  */
-export async function recreateProductImage(link: LinkRow, promptText?: string): Promise<RecreateResult> {
-  const prompt = (promptText && promptText.trim()) || defaultRecreatePrompt(link);
+export async function recreateProductImage(
+  link: LinkRow,
+  promptText?: string,
+  presetId?: string,
+): Promise<RecreateResult> {
+  // An explicit prompt from the operator wins; otherwise the selected preset
+  // (default gesture-closeup) builds the prompt.
+  const label = (link.product || "this product").trim();
+  const prompt =
+    (promptText && promptText.trim()) || presetPrompt(presetId || DEFAULT_PRESET, label, link.kategori);
+  const preset = findPreset(presetId);
   await mkdir(IMAGE_DIR, { recursive: true });
 
   let result: { bytes: Uint8Array; mime: string } | null = null;
@@ -129,7 +148,7 @@ export async function recreateProductImage(link: LinkRow, promptText?: string): 
     console.error("[recreate] could not persist image_url:", String(e).slice(0, 200));
   }
 
-  return { ok: true, path, file, served_url: served, prompt, mode };
+  return { ok: true, path, file, served_url: served, prompt, mode, preset: preset.id, aspect: preset.aspect };
 }
 
 /** Read a stored image back out of data/images/. Used by GET /api/images/:file. */
