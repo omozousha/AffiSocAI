@@ -64,16 +64,35 @@ export function defaultRecreatePrompt(link: LinkRow): string {
   ].join(" ");
 }
 
-/** Fetch a remote image into a buffer so it can be sent as a data URI. */
+/**
+ * Resolve the source image for a link into bytes + mime.
+ *
+ * `image_url` may be a remote http(s) URL (the Shopee og:image, the real
+ * reference), or a local `/api/images/...` path (a previously generated
+ * result). Both are valid inputs — a re-run of a preset rebuilds from the
+ * current image, which is what an operator editing a product expects.
+ * The remote path is what makes the product authentic, so it is tried first.
+ */
 async function fetchSource(url: string): Promise<Buffer | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25_000);
   try {
-    const res = await fetch(url, { signal: controller.signal, headers: { "User-Agent": "Twitterbot/1.0" } });
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length < 2_000 || buf.length > MAX_SOURCE_BYTES) return null;
-    return buf;
+    if (/^https?:\/\//i.test(url)) {
+      const res = await fetch(url, { signal: controller.signal, headers: { "User-Agent": "Twitterbot/1.0" } });
+      if (!res.ok) return null;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length < 2_000 || buf.length > MAX_SOURCE_BYTES) return null;
+      return buf;
+    }
+    // Local served path: /api/images/<file> -> data/images/<file>
+    if (url.startsWith("/api/images/")) {
+      const file = url.slice("/api/images/".length);
+      if (!/^[\w.-]+$/.test(file)) return null;
+      const buf = await readFile(join(IMAGE_DIR, file));
+      if (buf.length < 2_000 || buf.length > MAX_SOURCE_BYTES) return null;
+      return buf;
+    }
+    return null;
   } catch {
     return null;
   } finally {
