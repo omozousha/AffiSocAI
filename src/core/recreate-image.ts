@@ -24,6 +24,7 @@ import type { LinkRow } from "./store.ts";
 import { recreateImage, generateImage } from "./router-image.ts";
 import { updateLinkImage } from "./store.ts";
 import { presetPrompt, DEFAULT_PRESET, findPreset } from "./image-presets.ts";
+import { qwenEditImage, sdxlTurboImg2Img, hfSpaceHealthy, sdxlSpaceHealthy } from "./hf-space-image.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.AFFILIATE_DATA_DIR || join(HERE, "..", "..", "data");
@@ -38,10 +39,25 @@ export type RecreateResult =
       served_url: string;
       prompt: string;
       mode: "image-to-image" | "text-to-image";
+      backend: ImageBackend | null;
       preset: string;
       aspect: string;
     }
   | { ok: false; error: string };
+
+/** Which backend produced the image. Surfaced so an operator can tell a
+ *  low-fidelity CPU result from a proper one. */
+export type ImageBackend = "router" | "hf-qwen" | "hf-sdxl" | "router-t2i";
+
+/**
+ * Health probe for the chain. The router is the primary backend and answers
+ * in ~15s, so it is probed by GET-free means: a real call is cheap enough.
+ * ZeroGPU is excluded here — a probe would itself burn quota.
+ */
+async function pickBackend(): Promise<{ router: boolean; qwen: boolean; sdxl: boolean }> {
+  const [qwen, sdxl] = await Promise.all([hfSpaceHealthy(), sdxlSpaceHealthy()]);
+  return { router: true, qwen, sdxl };
+}
 
 /**
  * The default prompt. `kategori` shifts the setting to something plausible for
@@ -129,17 +145,50 @@ export async function recreateProductImage(
 
   let result: { bytes: Uint8Array; mime: string } | null = null;
   let mode: "image-to-image" | "text-to-image" = "text-to-image";
+  let backend: ImageBackend | null = null;
 
   const source = await fetchSource(link.image_url || "");
   if (source) {
     const mime = sniff(source);
     if (mime) {
-      try {
-        result = await recreateImage(`data:${mime};base64,${source.toString("base64")}`, prompt);
-        mode = "image-to-image";
-      } catch (e) {
-        console.error("[recreate] image-to-image failed:", String(e).slice(0, 200));
-        result = null;
+      const dataUri = `data:${mime};base64,${source.toString("base64")}`;
+      const backends = await pickBackend();
+
+      // 1. Router img2img — best fidelity (~15s), 1024px.
+      //    It fails transiently (429/502/503 during upstream exhaustion), so
+      //    retry once before declaring it down.
+      for (let attempt = 1; attempt <= 2 && !result; attempt++) {
+        try {
+          result = await recreateImage(dataUri, prompt);
+          mode = "image-to-image";
+          backend = "router";
+        } catch (e) {
+          console.error(`[recreate] router img2img attempt ${attempt} failed:`, String(e).slice(0, 160));
+          if (attempt === 1) await new Promise((r) => setTimeout(r, 1500));
+        }
+      }
+
+      // 2. HF Qwen Space — ZeroGPU quota, so only when healthy. ~25s, 1024px.
+      if (!result && backends.qwen) {
+        try {
+          result = await qwenEditImage(source, prompt);
+          mode = "image-to-image";
+          backend = "hf-qwen";
+        } catch (e) {
+          console.error("[recreate] hf-qwen img2img failed:", String(e).slice(0, 160));
+        }
+      }
+
+      // 3. HF SDXL CPU — no quota, ~140s, 512px. Slow but always available,
+      //    which is what makes it the last img2img rung.
+      if (!result && backends.sdxl) {
+        try {
+          result = await sdxlTurboImg2Img(source, prompt);
+          mode = "image-to-image";
+          backend = "hf-sdxl";
+        } catch (e) {
+          console.error("[recreate] hf-sdxl img2img failed:", String(e).slice(0, 160));
+        }
       }
     }
   }
@@ -150,6 +199,7 @@ export async function recreateProductImage(
     try {
       result = await generateImage(prompt);
       mode = "text-to-image";
+      backend = "router-t2i";
     } catch (e) {
       return { ok: false, error: `image generation failed: ${String(e).slice(0, 300)}` };
     }
@@ -167,7 +217,17 @@ export async function recreateProductImage(
     console.error("[recreate] could not persist image_url:", String(e).slice(0, 200));
   }
 
-  return { ok: true, path, file, served_url: served, prompt, mode, preset: preset.id, aspect: preset.aspect };
+  return {
+    ok: true,
+    path,
+    file,
+    served_url: served,
+    prompt,
+    mode,
+    backend,
+    preset: preset.id,
+    aspect: preset.aspect,
+  };
 }
 
 /** Read a stored image back out of data/images/. Used by GET /api/images/:file. */
