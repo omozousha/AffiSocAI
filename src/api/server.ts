@@ -50,6 +50,23 @@ async function readBody(req: import("node:http").IncomingMessage): Promise<Socia
   return text ? JSON.parse(text) : {};
 }
 
+/**
+ * A stored image_url may be a public http(s) url (Shopee CDN) or a local
+ * server path (`/api/images/…`) written by the enrich step. The sheet demands
+ * an absolute url, so a local path becomes the public origin. Returns "" for
+ * anything that is neither — `publishToBio` treats empty as "no image".
+ */
+function absoluteImageUrl(url: string | null | undefined): string {
+  const u = (url ?? "").trim();
+  if (!u) return "";
+  if (/^https?:\/\//i.test(u)) return u;
+  if (u.startsWith("/")) {
+    const origin = process.env.BIO_PUBLIC_BASE ?? `http://${process.env.HOST ?? "127.0.0.1"}:${process.env.PORT ?? "8787"}`;
+    return origin + u;
+  }
+  return "";
+}
+
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -258,14 +275,28 @@ const server = createServer(async (req, res) => {
       const body = await readBody(req);
       const link = getLink(Number(body.link_id));
       if (!link) return json(res, 404, { error: `no link with id ${body.link_id}` });
-      if (!link.image_url) return json(res, 400, { error: "link has no image_url — run /api/links/:id/enrich first" });
+
+      // The sheet is the source of truth for images: a row published earlier
+      // renders from the sheet even when the db row lost its image_url (the
+      // eSIM restore path drops it). Fall back to the sheet image before
+      // refusing, otherwise an already-published link reports "no image".
+      let image = absoluteImageUrl(link.image_url);
+      if (!image) {
+        try {
+          const items = await fetchBioItems();
+          const own = items.find((i) => (i.link || "") === link.short_url
+            || (i.link || "") === (link.original_url ?? ""));
+          if (own && own.images.length > 0) image = absoluteImageUrl(own.images[0]);
+        } catch { /* sheet unreachable — fall through to the image_url error */ }
+      }
+      if (!image) return json(res, 400, { error: "link has no image_url — run /api/links/:id/enrich first" });
 
       const result = await publishToBio({
         title: link.product ?? link.short_url,
         deskripsi: body.deskripsi ?? `Produk pilihan ${link.shop ?? "toko ini"}.`,
         link: link.short_url,
         kategori: body.kategori ?? "Fasion",
-        images: [link.image_url],
+        images: [image],
       });
 
       const code = result.status === "written" ? 201 : 200;
