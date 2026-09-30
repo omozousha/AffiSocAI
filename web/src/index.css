@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0b0c0e;
+  --color-panel: #141518;
+  --color-elev: #1c1e22;
+  --color-line: #26282e;
+  --color-fg: #e8e9eb;
+  --color-dim: #a7abb3;
+  --color-accent: #7dd3a8;
+}
+
+/* dark-only: tanpa light mode (putusan QA d7) */
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
