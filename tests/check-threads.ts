@@ -17,7 +17,7 @@ import { join } from "node:path";
 
 const home = mkdtempSync(join(tmpdir(), "threads-check-"));
 process.env.HOME = home;
-const secretDir = join(home, ".affiliate-tools", "threads");
+const secretDir = join(home, ".AffiSocAI", "threads");
 mkdirSync(secretDir, { recursive: true });
 writeFileSync(
   join(secretDir, "app.json"),

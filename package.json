@@ -1,10 +1,10 @@
 {
-  "name": "affiliate-tools",
+  "name": "AffiSocAI",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "affiliate-tools": "./src/server.ts"
+    "AffiSocAI": "./src/server.ts"
   },
   "scripts": {
     "dev": "bun run src/server.ts",

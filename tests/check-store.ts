@@ -5,7 +5,7 @@
 import { strict as assert } from "node:assert";
 import { rmSync } from "node:fs";
 
-const TEST_DB = "/root/affiliate-tools/data/test-store.db";
+const TEST_DB = "/root/AffiSocAI/data/test-store.db";
 process.env.AFFILIATE_DB = TEST_DB;
 rmSync(TEST_DB, { force: true });
 rmSync(TEST_DB + "-wal", { force: true });

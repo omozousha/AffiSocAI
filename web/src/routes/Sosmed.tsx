@@ -20,7 +20,7 @@ export default function Sosmed() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
-  const [text, setText] = useState("test post from affiliate-tools");
+  const [text, setText] = useState("test post from AffiSocAI");
   const [mediaUrl, setMediaUrl] = useState("");
   const [mediaKind, setMediaKind] = useState("image");
   const [lastOut, setLastOut] = useState("");
@@ -48,7 +48,7 @@ export default function Sosmed() {
   }, [toast]);
 
   const composer = () => ({
-    text: text || "test post from affiliate-tools",
+    text: text || "test post from AffiSocAI",
     mediaUrl: mediaUrl || undefined,
     mediaKind,
   });
