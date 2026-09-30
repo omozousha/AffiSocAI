@@ -6,7 +6,7 @@
  *   THREADS_USERNAME=xxx THREADS_PASSWORD=xxx node --experimental-strip-types scripts/threads-login.ts post "test caption" "https://.../img.jpg"
  *
  * Env only — no file is written unless --save is passed.
- * --save  writes session to ~/.affiliate-tools/threads-unofficial/session.json
+ * --save  writes session to ~/.AffiSocAI/threads-unofficial/session.json
  * --login  only login (no post)
  */
 
@@ -19,7 +19,7 @@ const username = String(process.env.THREADS_USERNAME || "").trim();
 const password = String(process.env.THREADS_PASSWORD || "").trim();
 const save = process.argv.includes("--save");
 const onlyLogin = process.argv.includes("--login") || process.argv.length === 2;
-const caption = process.argv[process.argv.indexOf("post") + 1] || "test from affiliate-tools";
+const caption = process.argv[process.argv.indexOf("post") + 1] || "test from AffiSocAI";
 const mediaUrl = process.argv[process.argv.indexOf("post") + 2] || "";
 
 if (!username || !password) {
@@ -46,7 +46,7 @@ async function main() {
 
     if (save && res.token) {
       const { writeFileSync, mkdirSync } = await import("node:fs");
-      const path = req("path").join(process.env.HOME || "/root", ".affiliate-tools", "threads-unofficial", "session.json");
+      const path = req("path").join(process.env.HOME || "/root", ".AffiSocAI", "threads-unofficial", "session.json");
       mkdirSync(req("path").dirname(path), { recursive: true, mode: 0o700 });
       writeFileSync(path, JSON.stringify({ token: res.token, userID: res.userID, username, saved_at: new Date().toISOString() }, null, 2), { mode: 0o600 });
       console.log("session saved:", path);

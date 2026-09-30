@@ -893,7 +893,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`affiliate-tools API on http://localhost:${PORT}`);
+  console.log(`AffiSocAI API on http://localhost:${PORT}`);
   console.log("providers:", listProviders().map((p) => `${p.slug}:${p.status}`).join("  "));
   // Backfills the rolling horizon and starts the 60 s tick loop. Safe to call
   // on every boot: slot_times and already-published slots are idempotent.

@@ -1,4 +1,4 @@
-# affiliate-tools
+# AffiSocAI
 
 Auto-posting affiliate Shopee ke Instagram, Facebook, Threads. Satu slot = satu
 produk ke semua platform aktif. Scheduler in-process, UI React dark-only.
