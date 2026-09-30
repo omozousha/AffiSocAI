@@ -1,0 +1,42 @@
+# secrets / keys
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+config.local.*
+.composio/
+
+# database (live + backups + wal/shm)
+data/affiliate.db
+data/affiliate.db-*
+data/affiliate.db.*
+data/*.bak*
+data/*.bak-*
+*.db
+*.db-*
+*.db.*
+*.bak
+
+# generated product images + cached sheet export
+data/images/
+data/*.csv
+
+# runtime artifacts
+*.log
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# node
+node_modules/
+dist/
+
+# deploy env files (may carry secrets later)
+deploy/*.env
+web/node_modules
+web/dist
+public/dist
