@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
+import { CalendarDays, Clock, Plus } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { Calendar } from "../components/ui/calendar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Skeleton } from "../components/ui/skeleton";
 import { api } from "../lib/utils";
 import {
@@ -57,9 +68,18 @@ export default function Jadwal() {
   const [tomorrow, setTomorrow] = useState<Slot[]>([]);
   const [healthy, setHealthy] = useState(false);
   const [newHm, setNewHm] = useState("");
-  const [adding, setAdding] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [pickDate, setPickDate] = useState<Date | undefined>(undefined);
+  const [jumpLabel, setJumpLabel] = useState("Besok");
   const [toast, setToast] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
+
+  const todayKey = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const keyOf = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
   const load = useCallback(async () => {
     try {
@@ -114,8 +134,10 @@ export default function Jadwal() {
     await saveTimes(times);
   };
 
+  const hmValid = /^([01]?\d|2[0-3]):[0-5]\d$/.test(newHm.trim());
+
   const addTime = async () => {
-    if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(newHm.trim())) return;
+    if (!hmValid) return;
     try {
       const r = await api<{ times?: string[]; lands?: string; error?: string }>("/api/schedule/add-time", {
         method: "POST",
@@ -129,10 +151,23 @@ export default function Jadwal() {
           : `jam ${newHm.trim()} masuk slot BESOK (waktu hari ini sudah lewat)`,
       );
       setNewHm("");
-      setAdding(false);
+      setOpen(false);
       await load();
     } catch (e) {
       setToast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  /** Jump to a date: loads that day's slots into the Besok panel. */
+  const jumpDate = async (d: Date | undefined) => {
+    setPickDate(d);
+    if (!d) return;
+    try {
+      const t = await api<SchedBody>(`/api/schedule?date=${keyOf(d)}`);
+      setTomorrow((t.body.slots ?? []).sort((a, b) => a.slot_index - b.slot_index));
+      setJumpLabel(keyOf(d) === todayKey() ? "Hari ini" : keyOf(d));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -184,68 +219,65 @@ export default function Jadwal() {
             {st && !st.enabled ? " · dijeda" : ""}
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={load}>
-          Muat ulang
-        </Button>
+        <div className="flex items-center gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm">
+                <CalendarDays className="mr-1 h-4 w-4" />
+                {pickDate ? keyOf(pickDate) : "Pilih tanggal"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar mode="single" selected={pickDate} onSelect={jumpDate} />
+            </PopoverContent>
+          </Popover>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="mr-1 h-4 w-4" />
+                Tambah jam
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Tambah jam posting</DialogTitle>
+                <DialogDescription>
+                  Jam yang masih di depan hari ini masuk slot hari ini, yang sudah
+                  lewat masuk besok. Maksimal 6 jam.
+                </DialogDescription>
+              </DialogHeader>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="flex items-center gap-1 text-zinc-400">
+                  <Clock className="h-3.5 w-3.5" /> Jam (WIB)
+                </span>
+                <Input
+                  type="time"
+                  value={newHm}
+                  onChange={(e) => setNewHm(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addTime();
+                  }}
+                  aria-label="Jam baru"
+                />
+              </label>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setOpen(false)}>
+                  Batal
+                </Button>
+                <Button onClick={addTime} disabled={!hmValid}>
+                  Tambah
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Button variant="ghost" size="sm" onClick={load}>
+            Muat ulang
+          </Button>
+        </div>
       </div>
 
       {err && <p className="text-sm text-red-400">gagal: {err}</p>}
       {toast && <p className="text-sm text-emerald-200">{toast}</p>}
-
-      {adding && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-          onClick={() => {
-            setAdding(false);
-            setNewHm("");
-          }}
-        >
-          <div
-            className="w-full max-w-sm rounded-lg border border-zinc-700 bg-zinc-950 p-5"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Tambah jam posting"
-          >
-            <h3 className="mb-1 text-base font-semibold">Tambah jam posting</h3>
-            <p className="mb-3 text-sm text-zinc-400">
-              Format HH:MM (WIB). Jam yang masih di depan hari ini masuk slot hari
-              ini, yang sudah lewat masuk besok.
-            </p>
-            <Input
-              // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus
-              value={newHm}
-              onChange={(e) => setNewHm(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") addTime();
-                if (e.key === "Escape") {
-                  setAdding(false);
-                  setNewHm("");
-                }
-              }}
-              placeholder="HH:MM"
-              maxLength={5}
-              inputMode="numeric"
-              aria-label="Jam baru HH:MM"
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setAdding(false);
-                  setNewHm("");
-                }}
-              >
-                Batal
-              </Button>
-              <Button onClick={addTime} disabled={!/^([01]?\d|2[0-3]):[0-5]\d$/.test(newHm.trim())}>
-                Tambah
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <Card>
         <CardHeader>
@@ -365,7 +397,7 @@ export default function Jadwal() {
                 </Badge>
               ))}
               {(st?.slot_times ?? []).length < 6 && (
-                <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+                <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
                   + tambah jam
                 </Button>
               )}
@@ -378,8 +410,12 @@ export default function Jadwal() {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Besok</CardTitle>
-            <CardDescription>Slot besok — jam baru yang ditambah muncul di sini.</CardDescription>
+            <CardTitle>{jumpLabel}</CardTitle>
+            <CardDescription>
+              {jumpLabel === "Besok"
+                ? "Slot besok — jam baru yang ditambah muncul di sini."
+                : `Slot tanggal ${jumpLabel} — pilih tanggal lain dari kalender di atas.`}
+            </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">

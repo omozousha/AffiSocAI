@@ -59,6 +59,10 @@ export type SlotRow = {
   /** Process that claimed this slot, so a zombie can be told apart. */
   lease_owner: string | null;
   lease_until: string | null;
+  /** Pre-warm: creative ready before due time (link locked, image built). */
+  warmed_link_id: number | null;
+  warmed_media_url: string | null;
+  warmed_at: string | null;
   created_at: string;
 };
 
@@ -81,6 +85,9 @@ db.exec(`
     attempts       INTEGER NOT NULL DEFAULT 0,
     lease_owner    TEXT,
     lease_until    TEXT,
+    warmed_link_id INTEGER,
+    warmed_media_url TEXT,
+    warmed_at      TEXT,
     created_at     TEXT    NOT NULL DEFAULT (datetime('now', 'subsec')),
     UNIQUE (slot_date, slot_index)
   );
@@ -90,6 +97,14 @@ db.exec(`
     value TEXT NOT NULL
   );
 `);
+
+// Migration for DBs born before pre-warm columns existed.
+{
+  const cols = db.prepare(`PRAGMA table_info(post_slots)`).all() as Array<{ name: string }>;
+  for (const [col, ddl] of [["warmed_link_id", "INTEGER"], ["warmed_media_url", "TEXT"], ["warmed_at", "TEXT"]] as const) {
+    if (!cols.some((c) => c.name === col)) db.exec(`ALTER TABLE post_slots ADD COLUMN ${col} ${ddl}`);
+  }
+}
 
 /** Local-time HH:MM -> slot index. Default: morning scroll / lunch / evening prime (WIB). */
 export const DEFAULT_SLOT_TIMES = ["07:30", "12:30", "19:30"] as const;
@@ -314,6 +329,50 @@ function unclaimSlot(id: number, error: string): void {
 const OWNER = `sched-${process.pid}`;
 const TICK_MS = Number(process.env.AFFILIATE_SCHED_TICK_MS || 60_000);
 
+/** Warm window: prepare the creative this far ahead of due time. */
+const WARM_LEAD_MIN = Number(process.env.AFFILIATE_WARM_LEAD_MIN || 60);
+/** Max retry rounds before a slot is declared failed. */
+const MAX_ATTEMPTS = Number(process.env.AFFILIATE_SLOT_MAX_ATTEMPTS || 5);
+/** Base backoff between retries (minutes), doubled each round. */
+const RETRY_BASE_MIN = Number(process.env.AFFILIATE_RETRY_BASE_MIN || 15);
+
+/**
+ * Pre-warm due-soon slots: lock the link + build the creative image NOW, so
+ * the due tick only publishes. Warming claims nothing — the slot stays
+ * pending, and a crashed warm is simply re-warmed next tick.
+ */
+export async function warmSlots(now = new Date()): Promise<number> {
+  const horizon = utcStamp(new Date(now.getTime() + WARM_LEAD_MIN * 60_000));
+  const nowStamp = utcStamp(now);
+  const cands = db.prepare(
+    `SELECT * FROM post_slots
+     WHERE status = 'pending' AND warmed_link_id IS NULL
+       AND scheduled_for > ? AND scheduled_for <= ?
+     ORDER BY scheduled_for ASC LIMIT 3`,
+  ).all(nowStamp, horizon) as unknown as SlotRow[];
+  let warmed = 0;
+  const { recreateProductImage } = await import("./recreate-image.ts");
+  for (const slot of cands) {
+    const link = pickLink();
+    if (!link?.image_url) continue;
+    try {
+      const cur = getLink(link.id);
+      let media = cur?.image_url ?? link.image_url;
+      const looksGen = /\/api\/images\//.test(media);
+      if (!looksGen) {
+        const gen = await recreateProductImage(link);
+        if (gen.ok) media = gen.served_url;
+      }
+      db.prepare(
+        `UPDATE post_slots SET warmed_link_id = ?, warmed_media_url = ?, warmed_at = datetime('now')
+         WHERE id = ? AND status = 'pending'`,
+      ).run(link.id, media, slot.id);
+      warmed++;
+    } catch { /* next tick retries the warm */ }
+  }
+  return warmed;
+}
+
 /** Enabled by default so that a boot is enough; set 0/false to pause. */
 export function schedulerEnabled(): boolean {
   const raw = metaGet("enabled");
@@ -326,13 +385,20 @@ export function setSchedulerEnabled(on: boolean): void {
 }
 
 /**
- * Pick which link a slot should post.
- *
- * Rotation, not recency: the most recently posted link is chosen among the
- * pool, so posting the same product every slot is avoided. Links without an
- * image are excluded — an unmedia'd post is rejected higher up anyway, and
- * skipping them here keeps the log honest about *why* nothing was posted.
+ * Links posted within the last N days — the anti-bosu set. A product posted
+ * this week is skipped while fresher stock exists. Bypassed only when the
+ * pool is smaller than the window (nothing else to post).
  */
+const REPOST_WINDOW_DAYS = 7;
+
+function recentLinkIds(days = REPOST_WINDOW_DAYS): Set<number> {
+  const rows = db.prepare(
+    `SELECT DISTINCT link_id AS id FROM post_slots
+     WHERE status = 'published' AND link_id IS NOT NULL
+       AND datetime(scheduled_for) >= datetime('now', ?)`,
+  ).all(`-${days} days`) as Array<{ id: number }>;
+  return new Set(rows.map((r) => r.id));
+}
 export function pickLink(preferNew = true): ReturnType<typeof getLink> {
   const all = listLinks();
   if (all.length === 0) return undefined;
@@ -355,17 +421,24 @@ export function pickLink(preferNew = true): ReturnType<typeof getLink> {
   }
 
   // 1) Newest never-posted link first — fresh products get priority.
-  const fresh = pool.filter((l) => !lastByLink.has(l.id));
+  // Anti-bosu: links posted within REPOST_WINDOW_DAYS are skipped while
+  // anything else exists. Bypassed when the pool is smaller than the window.
+  const recent = recentLinkIds();
+  const unrecent = (arr: ReturnType<typeof listLinks>) =>
+    arr.length > recent.size ? arr.filter((l) => !recent.has(l.id)) : arr;
+  const freshAll = pool.filter((l) => !lastByLink.has(l.id));
+  const fresh = unrecent(freshAll);
   if (preferNew && fresh.length > 0) return fresh[fresh.length - 1];
 
   // 2) Otherwise least-recently-posted, but never a link already posted today.
-  const rest = pool
+  const restAll = pool
     .filter((l) => !postedToday.has(l.id))
     .sort((a, b) => {
       const ta = lastByLink.get(a.id) ?? "";
       const tb = lastByLink.get(b.id) ?? "";
       return ta < tb ? -1 : ta > tb ? 1 : 0;
     });
+  const rest = unrecent(restAll);
   if (rest.length > 0) return rest[0];
 
   // 3) Everything was posted today already: random pick (SQLite RANDOM()).
@@ -417,7 +490,17 @@ type PreparedPost = {
  * The link is picked ONCE per slot so every platform posts the same product.
  */
 async function preparePost(slot: SlotRow): Promise<PreparedPost> {
+  // Pre-warmed slot: the link + creative were locked before due time.
+  // Reuse them — the due tick only publishes.
   let link = pickLink();
+  let warmedMedia: string | null = null;
+  if (slot.warmed_link_id) {
+    const wl = getLink(slot.warmed_link_id);
+    if (wl?.image_url) {
+      link = wl;
+      warmedMedia = slot.warmed_media_url ?? null;
+    }
+  }
   if (!link) throw new Error("no link available to post");
 
   // Imageless link picked: enrich (og fetch) + seal + recreate NOW, so it
@@ -460,8 +543,9 @@ async function preparePost(slot: SlotRow): Promise<PreparedPost> {
   // image was generated with a pre-premium prompt are also regenerated, so
   // the cron converges every product to the premium style over time.
   // The creative is generated ONCE per slot and shared by all platforms.
-  let mediaUrl = absoluteForProvider(link.image_url!);
-  const looksGenerated = /^https?:\/\/affine\.realpaytrans\.my\.id\/api\/images\//.test(mediaUrl) || mediaUrl.startsWith("/api/images/");
+  // A warmed creative skips regeneration entirely — it was built pre-due.
+  let mediaUrl = warmedMedia ?? absoluteForProvider(link.image_url!);
+  const looksGenerated = warmedMedia != null || /^https?:\/\/affine\.realpaytrans\.my\.id\/api\/images\//.test(mediaUrl) || mediaUrl.startsWith("/api/images/");
   const { recreateProductImage } = await import("./recreate-image.ts");
   if (!looksGenerated) {
     try {
@@ -711,14 +795,27 @@ export async function runSlot(slot: SlotRow): Promise<SlotRow> {
       error: errNote,
     });
   } else {
+    // Smart retry: exponential backoff (15m → 30m → 60m …) instead of failing
+    // at 3 attempts. The slot stays pending and the next tick re-claims it at
+    // the pushed time, so a transient Threads outage no longer kills the slot.
     const err = failed.map((f) => `${f.platform}: ${f.error}`).join(" | ").slice(0, 400) || "all platforms failed";
-    finishSlot(slot.id, {
-      status: slot.attempts > 3 ? "failed" : "pending",
-      error: err,
-      link_id: prepared.link_id,
-      platform: null,
-      content_id: failed[0]?.content_id ?? null,
-    });
+    if (slot.attempts >= MAX_ATTEMPTS) {
+      finishSlot(slot.id, {
+        status: "failed",
+        error: err,
+        link_id: prepared.link_id,
+        platform: null,
+        content_id: failed[0]?.content_id ?? null,
+      });
+    } else {
+      const delayMin = RETRY_BASE_MIN * 2 ** Math.max(0, slot.attempts - 1);
+      const retryAt = utcStamp(new Date(Date.now() + delayMin * 60_000));
+      db.prepare(
+        `UPDATE post_slots SET status = 'pending', lease_owner = NULL, lease_until = NULL,
+         error = ?, scheduled_for = ?, warmed_link_id = NULL, warmed_media_url = NULL, warmed_at = NULL
+         WHERE id = ?`,
+      ).run(`retry in ~${delayMin}m (${slot.attempts}/${MAX_ATTEMPTS}): ${err}`.slice(0, 500), retryAt, slot.id);
+    }
   }
   return getSlot(slot.id)!;
 }
@@ -727,10 +824,15 @@ function linkShort(id: number): string {
   return getLink(id)?.short_url ?? "";
 }
 
-/** One tick: top up slots, then publish everything due. */
-export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created: number }> {
+/** One tick: top up slots, warm due-soon creatives, then publish everything due. */
+export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created: number; warmed: number }> {
   const created = ensureSlots(now);
-  if (!schedulerEnabled()) return { ran: [], created };
+  if (!schedulerEnabled()) return { ran: [], created, warmed: 0 };
+
+  let warmed = 0;
+  try {
+    warmed = await warmSlots(now);
+  } catch { /* warming is best-effort — the due path still works */ }
 
   const due = claimableSlots(now);
   const ran: SlotRow[] = [];
@@ -747,7 +849,7 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
       meta: { ran: ran.map((s) => ({ id: s.id, status: s.status, platform: s.platform, post_id: s.post_id })) },
     });
   }
-  return { ran, created };
+  return { ran, created, warmed };
 }
 
 /** Publish one slot by id now, ignoring its scheduled time. */
