@@ -11,12 +11,13 @@
  */
 
 import { createServer } from "node:http";
+process.loadEnvFile?.();
 import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getProvider, listProviders } from "../core/registry.ts";
 import { composio } from "../core/composio.ts";
-import { addLink, addContent, listContent, listLinks, getLink, getLinkBySheetId, enrichLink } from "../core/store.ts";
+import { addLink, addContent, listContent, listLinks, getLink, getLinkBySheetId, enrichLink, deleteLink, setContentStatus, answeredCommentIds, recordReply, listReplies } from "../core/store.ts";
 import { buildTemplates, productName } from "../core/templates.ts";
 import { buildMysteryCaption, mysteryKind, MYSTERY_PLATFORMS, type MysteryDraft } from "../core/mystery-caption.ts";
 import { fetchOg, checkImageUrl } from "../core/shopee.ts";
@@ -24,9 +25,11 @@ import { fetchBioItems, nextIds, importableItems, publishToBio } from "../core/b
 import { addLinksBulk, parseLinkBlob, normaliseLink } from "../core/add-link.ts";
 import {
   listSlots,
+  getSlotById,
   schedulerStatus,
   trendReport,
   setSlotTimes,
+  addSlotTime,
   setSchedulerEnabled,
   ensureHorizon,
   runSlotNow,
@@ -42,9 +45,19 @@ import {
   type ActivitySource,
 } from "../core/activity-log.ts";
 import { recreateProductImage } from "../core/recreate-image.ts";
+import { journeyText, renderProofCard, type JourneyStats } from "../core/journey-card.ts";
 import { IMAGE_PRESETS, DEFAULT_PRESET } from "../core/image-presets.ts";
 import { authorizeUrl, exchangeCode, clearThreadsToken } from "../providers/threads.ts";
 import type { SocialContent } from "../core/types.ts";
+/** Current UTC "YYYY-MM-DD HH:MM:SS" — same frame as the slot columns. */
+function nowUtcStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ` +
+    `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`
+  );
+}
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
@@ -150,9 +163,9 @@ const server = createServer(async (req, res) => {
    * Everything else falls through to the API handlers below.
    */
   if (req.method === "GET" && !url.pathname.startsWith("/api/")) {
-    // url.pathname never includes the query, so "?v=2" cache-busters resolve
-    // to the real file on disk.
-    const rel = url.pathname === "/" ? "/index.html" : url.pathname;
+    // R7 cutover: "/" serves the React build. The vanilla v6 shell was
+    // removed — public/ now only holds dist/.
+    const rel = url.pathname === "/" ? "/dist/index.html" : url.pathname;
     const pub = join(HERE, "..", "..", "public");
     const file = join(pub, rel);
     const inside = file.startsWith(pub + "/");
@@ -212,6 +225,17 @@ const server = createServer(async (req, res) => {
       });
     }
 
+    /** Add ONE slot time — lands today if still ahead, else tomorrow. */
+    if (req.method === "POST" && url.pathname === "/api/schedule/add-time") {
+      const body = (await readBody(req)) as unknown as { slot_time?: string; hhmm?: string };
+      try {
+        const { times, lands } = addSlotTime(String(body.slot_time ?? body.hhmm ?? ""));
+        return json(res, 200, { times, lands, status: schedulerStatus() });
+      } catch (e) {
+        return json(res, 400, { error: String(e).slice(0, 200) });
+      }
+    }
+
     /** slot_times, enabled, and a rolling horizon top-up. */
     if (req.method === "POST" && url.pathname === "/api/schedule/config") {
       const body = await readBody(req);
@@ -237,6 +261,15 @@ const server = createServer(async (req, res) => {
       const body = await readBody(req);
       const id = Number(body.slot_id ?? url.searchParams.get("slot_id"));
       if (!Number.isInteger(id) || id <= 0) return json(res, 400, { error: "slot_id is required" });
+      // Guard: future slots are rejected (running tomorrow's slot today burns
+      // it — the tick would find nothing due at its real time), as are slots
+      // that already published. Only past/today due slots may run now.
+      const target = getSlotById(id);
+      if (!target) return json(res, 404, { error: `no slot ${id}` });
+      if (target.status === "published")
+        return json(res, 409, { error: `slot ${id} already published (${target.post_id ?? "no post id"})` });
+      if (target.scheduled_for > nowUtcStamp())
+        return json(res, 409, { error: `slot ${id} is scheduled for the future (${target.scheduled_for} UTC) — wait for its time` });
       try {
         const slot = await runSlotNow(id);
         return json(res, slot.status === "published" ? 200 : 502, { slot });
@@ -340,6 +373,15 @@ const server = createServer(async (req, res) => {
       }
       const result = await addLinksBulk(inputs);
       return json(res, result.rejected === result.total ? 422 : 201, result);
+    }
+
+    /** Delete a stored link + its content rows. Slot history keeps link_id as a tombstone. */
+    if (req.method === "DELETE" && /^\/api\/links\/\d+$/.test(url.pathname)) {
+      const id = Number(url.pathname.split("/")[3]);
+      const link = getLink(id);
+      if (!link) return json(res, 404, { error: `no link with id ${id}` });
+      deleteLink(id);
+      return json(res, 200, { deleted: id });
     }
 
     /** Re-scrape og:title / og:image for a stored link and persist them. */
@@ -515,6 +557,103 @@ const server = createServer(async (req, res) => {
       });
     }
 
+    /**
+     * Journey post — the reference-post pattern: story arc + proof card.
+     * Counters come from the live DB; nothing is typed by hand.
+     *   POST /api/content/journey  → { caption, hashtags, text, card_url }
+     */
+    if (req.method === "POST" && url.pathname === "/api/content/journey") {
+      const links = listLinks();
+      const rows = listContent();
+      const dayCount = new Set(rows.map((r) => String(r.created_at || "").slice(0, 10))).size;
+      const published = rows.filter((r) => r.status === "published").length;
+      const stats: JourneyStats = {
+        products: links.length,
+        categories: new Set(links.map((l) => (l.kategori || "").trim()).filter(Boolean)).size,
+        contentPieces: rows.length,
+        postsPublished: published,
+        daysActive: dayCount,
+        handle: "karasu_michi",
+        period: "September 2026",
+      };
+      const card = renderProofCard(stats);
+      return json(res, card.ok ? 200 : 502, {
+        ok: card.ok,
+        stats,
+        caption: journeyText(stats),
+        hashtags: card.ok ? card.hashtags : [],
+        media_url: card.ok ? card.served_url : null,
+        linkPlacement: "bio",
+        firstComment: null,
+        error: card.ok ? null : card.error,
+      });
+    }
+
+    /**
+     * POST /api/content/journey/publish — one call: real stats → card →
+     * publish to Threads. If the token expired (or is missing) the publish is
+     * skipped and `relogin_url` comes back instead, so the operator clicks once
+     * and Meta's callback re-sarms `/token.json`. Nothing is auto-logged-in:
+     * Meta's OAuth needs a human click, and no password is ever involved.
+     */
+    if (req.method === "POST" && url.pathname === "/api/content/journey/publish") {
+      const links = listLinks();
+      const rows = listContent();
+      const published = rows.filter((r) => r.status === "published").length;
+      const dayCount = new Set(rows.map((r) => String(r.created_at || "").slice(0, 10))).size;
+      const stats: JourneyStats = {
+        products: links.length,
+        categories: new Set(links.map((l) => (l.kategori || "").trim()).filter(Boolean)).size,
+        contentPieces: rows.length,
+        postsPublished: published,
+        daysActive: dayCount,
+        handle: "karasu_michi",
+        period: "September 2026",
+      };
+      const card = renderProofCard(stats);
+      if (!card.ok) return json(res, 502, { ok: false, error: card.error });
+
+      const p = getProvider("threads");
+      const s = await p?.getAccount();
+      const ready = Boolean(s);
+      if (!p || !ready) {
+        const a = authorizeUrl();
+        return json(res, 401, {
+          ok: false,
+          published: false,
+          token_expired: true,
+          relogin_url: "url" in a ? a.url : null,
+          message: "Threads session expired — buka relogin_url, login, lalu retry.",
+          stats,
+          media_url: card.served_url,
+        });
+      }
+
+      // media_url must be reachable by Meta's CDN: use the public callback
+      // host, not 127.0.0.1, which only this VPS can resolve.
+      const base = process.env.BIO_PUBLIC_BASE ?? "";
+      const media = base ? `${base}${card.served_url}` : card.served_url;
+      try {
+        const r = await p.publish({
+          text: journeyText(stats),
+          mediaUrl: media,
+          mediaKind: "image",
+        });
+        logActivity("info", "sosmed", "journey published", { postId: r.postId ?? null });
+        return json(res, 200, {
+          ok: true,
+          published: r.ok,
+          post_url: r.url ?? null,
+          post_id: r.postId ?? null,
+          stats,
+          media_url: media,
+        });
+      } catch (e) {
+        logActivity("warn", "sosmed", "journey publish failed", { error: String(e).slice(0, 300) });
+        return json(res, 502, { ok: false, published: false, error: String(e) });
+      }
+    }
+
     // --- Threads connect (Meta Threads API, OAuth 2.0) ---------------
     // Placed before the /api/providers block: those routes 404 unknown slugs,
     // and these are not provider-crud routes.
@@ -604,6 +743,101 @@ const server = createServer(async (req, res) => {
           blockedReason: p?.blockedReason ?? null,
         });
       }
+    }
+
+    /**
+     * Threads auto-reply — answers comments on our own published posts.
+     *   GET  /api/threads/replies?dry=1   preview candidates (no publish)
+     *   POST /api/threads/replies         publish (opt-in: THREADS_AUTOREPLY=1)
+     *   GET  /api/threads/replies/log     answered history
+     * Guards: own posts only, one reply per comment, cap per run.
+     */
+    if (url.pathname === "/api/threads/replies/log" && req.method === "GET") {
+      return json(res, 200, { replies: listReplies() });
+    }
+    if (url.pathname === "/api/threads/replies" && (req.method === "GET" || req.method === "POST")) {
+      const dry = req.method === "GET" || new URL(req.url ?? "", "http://x").searchParams.get("dry") === "1";
+      if (req.method === "POST" && !dry && process.env.THREADS_AUTOREPLY !== "1") {
+        return json(res, 403, { error: "auto-reply off — set THREADS_AUTOREPLY=1 to publish" });
+      }
+      const { scanReplies } = await import("../core/thread-replies.ts");
+      const published = listContent().filter((c) => c.platform === "threads" && c.status === "published" && c.post_id);
+      const out = await scanReplies(published, answeredCommentIds(), { dryRun: dry });
+      if (!dry) {
+        for (const r of out.published) {
+          recordReply({ content_id: r.contentId, comment_id: r.commentId, comment_user: r.commentUser, comment_text: r.commentText, reply_text: r.replyText });
+        }
+      }
+      return json(res, 200, { dry, answered: out.published.length, candidates: out.candidates, published: out.published, skipped: out.skipped });
+    }
+    /**
+     * Post one stored link right now, bypassing the slot rotation.
+     *   POST /api/links/20/post  { "platform": "threads" }
+     * Platform defaults to the first VERIFIED-EXECUTED provider that can take
+     * media. Builds the mystery caption from the DB row, validates, publishes,
+     * and persists the content row — the same shape the scheduler writes, so
+     * #/jadwal and #/konten read it back without special-casing.
+     */
+    if (req.method === "POST" && /^\/api\/links\/\d+\/post$/.test(url.pathname)) {
+      const id = Number(url.pathname.split("/")[3]);
+      const link = getLink(id);
+      if (!link) return json(res, 404, { error: `no link with id ${id}` });
+      if (!link.image_url) return json(res, 400, { error: "link has no image_url — run /api/links/:id/enrich first" });
+      const body = (await readBody(req)) as { platform?: string };
+      const want = String(body.platform ?? "").toLowerCase();
+      const ready = MYSTERY_PLATFORMS.map((key) => ({ key, p: getProvider(key) }))
+        .filter((t) => t.p && t.p.status === "VERIFIED-EXECUTED" && t.p.capabilities.imagePost);
+      if (ready.length === 0) return json(res, 502, { error: "no publishable platform: every provider is disconnected or cannot post media" });
+      const target = (want ? ready.find((t) => t.key === want) : ready[0]) ?? null;
+      if (!target) return json(res, 400, { error: `platform ${want} is not publishable (ready: ${ready.map((t) => t.key).join(",")})` });
+      const draft = buildMysteryCaption(target.key, link as Parameters<typeof buildMysteryCaption>[1]);
+      // Post the generated product image, not the raw Shopee CDN photo. A link
+      // that never went through Recreate still points at susercontent — run it
+      // now so every post carries the generated creative.
+      let media = absoluteImageUrl(link.image_url);
+      if (!media.startsWith("/api/images/") && !/^https?:\/\/affine\.realpaytrans\.my\.id\/api\/images\//.test(media)) {
+        const gen = await recreateProductImage(link);
+        if (gen.ok) media = absoluteImageUrl(gen.served_url);
+      }
+      // Threads renders bare URLs as tappable link cards; the mystery caption
+      // deliberately withholds the link ("cek di bio"), so append the short
+      // URL explicitly for this platform only.
+      let text = draft.body;
+      if (target.key === "threads" && link.short_url && !text.includes(link.short_url)) {
+        text = `${text}\n\n${link.short_url}`;
+      }
+      // Threads topic_tag: routes into the topic feed (screenshot composer
+      // "Community or topic" picker). Derived from the link's category.
+      const { buildIdentity, detectType } = await import("../core/product-identity.ts");
+      const { topicFor } = await import("../core/mystery-caption.ts");
+      const topicTag = target.key === "threads"
+        ? topicFor(detectType(buildIdentity({ product: link.product, kategori: link.kategori ?? null, shop: link.shop ?? null })))
+        : null;
+      const content = { text, mediaUrl: media, mediaKind: "image" as const, link: link.short_url, ...(topicTag ? { topicTag } : {}) };
+      const check = await target.p!.validateContent(content);
+      if (!check.ok) return json(res, 422, { error: check.errors.join("; "), draft });
+      const row = addContent({ link_id: id, platform: target.key, kind: mysteryKind(media), body: text, media_url: media, first_comment: null });
+      const pub = await target.p!.publish(content);
+      if (pub.ok) {
+        // Instagram returns a container id even when the media never goes
+        // live — verify before claiming "published", or the DB lies.
+        let finalStatus: "published" | "rejected" = "published";
+        let verifyNote: string | null = null;
+        if (target.key === "instagram" && pub.postId && target.p!.getPostStatus) {
+          const st = await target.p!.getPostStatus(pub.postId);
+          if (st.state !== "published") {
+            finalStatus = "rejected";
+            verifyNote = `instagram verify: ${st.state} (${st.detail ?? "no permalink"})`;
+          }
+        }
+        setContentStatus(row.id, finalStatus, { post_id: pub.postId ?? null, post_url: pub.url ?? null, error: verifyNote });
+        if (finalStatus === "published") {
+          return json(res, 200, { content_id: row.id, link_id: id, platform: target.key, post_id: pub.postId ?? null, post_url: pub.url ?? null, draft, ...(text !== draft.body ? { text } : {}) });
+        }
+        return json(res, 502, { error: verifyNote, content_id: row.id, draft });
+      }
+      setContentStatus(row.id, "rejected", { error: pub.error ?? null });
+      return json(res, 502, { error: pub.error ?? "publish failed", content_id: row.id, draft });
     }
 
     if (req.method === "POST" && /^\/api\/links\/\d+\/recreate-image$/.test(url.pathname)) {

@@ -21,8 +21,9 @@
  * the only correct order.
  */
 
-import { addLink, getLinkByUrl, attachSheetId } from "./store.ts";
+import { addLink, enrichLink, getLinkByUrl, attachSheetId } from "./store.ts";
 import { fetchOg, checkImageUrl } from "./shopee.ts";
+import { classifyCategory } from "./category.ts";
 import { productName } from "./templates.ts";
 import { fetchBioItems, isShopeeShortLink, publishToBio } from "./biolink.ts";
 
@@ -44,8 +45,11 @@ export type AddLinkResult = {
   link_id?: number;
   product?: string | null;
   image_url?: string | null;
+  deskripsi?: string | null;
   image_verified: boolean;
   og_found: boolean;
+  kategori?: string | null;
+  kategori_source?: "operator" | "auto" | "stored" | null;
   sheet?: "written" | "already" | "skipped";
   sheet_id?: number;
 };
@@ -74,8 +78,8 @@ export function normaliseLink(raw: string): { ok: true; url: string } | { ok: fa
     return { ok: false, reason: "not a Shopee link" };
   }
   if (!isShopeeShortLink(link)) {
-    // A full product URL is accepted too; the og fetch works on both.
-    if (/shopee\.(co\.id|id|com)\/.*\/\d{5,}\/\d{5,}/i.test(link)) return { ok: true, url: link };
+    // Accept full product URLs too; the og fetch works on both.
+    if (/shopee\.(co\.id|id|com)\/.*\d{5,}.*\d{5,}/i.test(link)) return { ok: true, url: link };
     return { ok: false, reason: "not a recognisable Shopee product link" };
   }
   return { ok: true, url: link };
@@ -120,6 +124,22 @@ export async function addLinkPipeline(
 
   const product = og?.title ? productName(og.title) : (existing?.product ?? null);
   const image_url = (imageVerified ? og?.image : null) ?? existing?.image_url ?? null;
+  const deskripsi = og?.description || (existing as { deskripsi?: string | null })?.deskripsi || null;
+
+  // --- category: operator wins, else auto-guess from title+description ---
+  let kategori: string | null = input.kategori?.trim() || null;
+  let kategori_source: AddLinkResult["kategori_source"] = kategori ? "operator" : null;
+  if (!kategori) {
+    const stored = existing?.kategori?.trim() || null;
+    if (stored && stored !== DEFAULT_KATEGORI) {
+      kategori = stored;
+      kategori_source = "stored";
+    } else if (product || og?.description) {
+      const guess = await classifyCategory(product || og?.title || "", og?.description || "");
+      kategori = guess.category;
+      kategori_source = "auto";
+    }
+  }
 
   if (opts.dryRun) {
     return {
@@ -128,19 +148,31 @@ export async function addLinkPipeline(
       link_id: existing?.id,
       product,
       image_url,
+      deskripsi,
       image_verified: imageVerified,
       og_found: ogFound,
+      kategori,
+      kategori_source,
       sheet: undefined,
     };
   }
 
   // --- store ---
-  const row = addLink({
+  const inserted = addLink({
     short_url: norm.url,
     product,
     image_url,
-    kategori: input.kategori || existing?.kategori || null,
+    deskripsi,
+    kategori: kategori || existing?.kategori || null,
   });
+  // addLink is idempotent on short_url — a re-add returns the stale row as-is,
+  // so backfill columns the first save missed (deskripsi/kategori are new;
+  // older rows predate them) before anything downstream reads the row.
+  let row = inserted;
+  if (existing && (product || image_url || deskripsi || kategori)) {
+    enrichLink(inserted.id, { product, image_url, deskripsi, kategori: kategori || existing.kategori });
+    row = { ...inserted, product: product ?? inserted.product, image_url: image_url ?? inserted.image_url, deskripsi: deskripsi ?? inserted.deskripsi, kategori: kategori || inserted.kategori };
+  }
   // Distinguish a genuine insert from an idempotent re-add: addLink returns the
   // existing row unchanged when the short_url is already stored, so a row that
   // already had data is an "updated", a fresh row is an "added".
@@ -155,8 +187,11 @@ export async function addLinkPipeline(
       link_id: row.id,
       product: row.product,
       image_url: row.image_url,
+      deskripsi,
       image_verified: imageVerified,
       og_found: ogFound,
+      kategori,
+      kategori_source,
       sheet: "skipped",
     };
   }
@@ -167,8 +202,11 @@ export async function addLinkPipeline(
       link_id: row.id,
       product: row.product,
       image_url: row.image_url,
+      deskripsi,
       image_verified: imageVerified,
       og_found: ogFound,
+      kategori,
+      kategori_source,
       sheet: "skipped",
       reason: "no fetchable image — not appended to sheet",
     };
@@ -180,9 +218,9 @@ export async function addLinkPipeline(
   try {
     const res = await publishToBio({
       title: row.product || product || "Produk",
-      deskripsi: input.deskripsi ?? "",
+      deskripsi: input.deskripsi ?? deskripsi ?? "",
       link: row.short_url,
-      kategori: input.kategori || row.kategori || DEFAULT_KATEGORI,
+      kategori: kategori || row.kategori || DEFAULT_KATEGORI,
       images: [image_url],
     });
     sheet = res.status === "written" ? "written" : res.status;
@@ -195,8 +233,11 @@ export async function addLinkPipeline(
       link_id: row.id,
       product: row.product,
       image_url: row.image_url,
+      deskripsi,
       image_verified: imageVerified,
       og_found: ogFound,
+      kategori,
+      kategori_source,
       sheet,
       reason: `sheet append failed: ${String(e).slice(0, 200)}`,
     };
@@ -222,8 +263,11 @@ export async function addLinkPipeline(
     link_id: row.id,
     product: row.product,
     image_url: row.image_url,
+    deskripsi,
     image_verified: imageVerified,
     og_found: ogFound,
+    kategori,
+    kategori_source,
     sheet,
     sheet_id: sheetId,
   };

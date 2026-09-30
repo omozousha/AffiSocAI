@@ -18,6 +18,8 @@ export type LinkInfo = {
   product?: string | null;
   /** Product image URL (og:image), must be Meta-fetchable. */
   image_url?: string | null;
+  /** AI-guessed product category (16 fixed labels), null when unknown. */
+  kategori?: string | null;
 };
 
 export type Draft = {
@@ -54,7 +56,7 @@ export function productName(raw: string | null | undefined): string | null {
   return s.length > 70 ? null : s;
 }
 
-/** Shop slugs read better than raw ids: "opaanlp" -> "Opaanlp". */
+/** Shop slugs read better than raw ids: "{{SHOP_SLUG}}" -> "Opaanlp". */
 function shopLabel(link: LinkInfo): string {
   if (!link.shop) return "toko ini";
   const clean = link.shop.replace(/[._-]+/g, " ").trim();

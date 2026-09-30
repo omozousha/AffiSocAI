@@ -4,8 +4,8 @@ import { buildTemplates } from "../src/core/templates.ts";
 
 const LINK = {
   short_url: "https://s.shopee.co.id/5fp1UF7Q7o",
-  resolved_url: "https://shopee.co.id/opaanlp/1337935037/28620395139",
-  shop: "opaanlp",
+  resolved_url: "https://shopee.co.id/{{SHOP_SLUG}}/1337935037/28620395139",
+  shop: "{{SHOP_SLUG}}",
   shopee_shop_id: "1337935037",
   shopee_item_id: "28620395139",
 };

@@ -22,6 +22,7 @@ export type LinkRow = {
   shop: string | null;
   product: string | null;
   image_url: string | null;
+  deskripsi: string | null;
   kategori: string | null;
   sheet_id: number | null;
   note: string | null;
@@ -60,6 +61,7 @@ db.exec(`
     shopee_item_id  TEXT,
     product         TEXT,
     image_url       TEXT,
+    deskripsi       TEXT,
     kategori        TEXT,
     sheet_id        INTEGER UNIQUE,
     note            TEXT,
@@ -80,6 +82,17 @@ db.exec(`
     updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_content_link ON content(link_id);
+  CREATE TABLE IF NOT EXISTS thread_replies (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    content_id   INTEGER NOT NULL REFERENCES content(id) ON DELETE CASCADE,
+    comment_id   TEXT NOT NULL UNIQUE,
+    comment_user TEXT,
+    comment_text TEXT,
+    reply_text   TEXT NOT NULL,
+    reply_id     TEXT,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_replies_content ON thread_replies(content_id);
 `);
 // Migration for a database created before first_comment existed.
 const cols = db.prepare(`PRAGMA table_info(content)`).all() as unknown as Array<{ name: string }>;
@@ -88,7 +101,7 @@ if (!cols.some((c) => c.name === "first_comment")) {
 }
 // Migration for a database created before product enrichment existed.
 const linkCols = db.prepare(`PRAGMA table_info(links)`).all() as unknown as Array<{ name: string }>;
-for (const [col, ddl] of [["product", "TEXT"], ["image_url", "TEXT"], ["kategori", "TEXT"], ["sheet_id", "INTEGER"]] as const) {
+for (const [col, ddl] of [["product", "TEXT"], ["image_url", "TEXT"], ["deskripsi", "TEXT"], ["kategori", "TEXT"], ["sheet_id", "INTEGER"]] as const) {
   if (!linkCols.some((c) => c.name === col)) {
     db.exec(`ALTER TABLE links ADD COLUMN ${col} ${ddl}`);
   }
@@ -192,6 +205,7 @@ export function addLink(input: {
   note?: string | null;
   product?: string | null;
   image_url?: string | null;
+  deskripsi?: string | null;
   kategori?: string | null;
   sheet_id?: number | null;
 }): LinkRow {
@@ -214,8 +228,8 @@ export function addLink(input: {
   }
   const ids = parseShopee(input.resolved_url ?? input.short_url);
   db.prepare(
-    `INSERT INTO links (shop, short_url, resolved_url, shopee_shop_id, shopee_item_id, note, product, image_url, kategori, sheet_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO links (shop, short_url, resolved_url, shopee_shop_id, shopee_item_id, note, product, image_url, deskripsi, kategori, sheet_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(sheet_id) DO UPDATE SET
        short_url = excluded.short_url,
        resolved_url = COALESCE(excluded.resolved_url, links.resolved_url),
@@ -224,6 +238,7 @@ export function addLink(input: {
        note = COALESCE(excluded.note, links.note),
        product = COALESCE(excluded.product, links.product),
        image_url = COALESCE(excluded.image_url, links.image_url),
+       deskripsi = COALESCE(excluded.deskripsi, links.deskripsi),
        kategori = COALESCE(excluded.kategori, links.kategori)`,
   ).run(
     ids.shop,
@@ -234,6 +249,7 @@ export function addLink(input: {
     input.note ?? null,
     input.product ?? null,
     input.image_url ?? null,
+    input.deskripsi ?? null,
     input.kategori ?? null,
     input.sheet_id ?? null,
   );
@@ -295,6 +311,44 @@ export function listContent(linkId?: number): ContentRow[] {
   return db.prepare(`SELECT * FROM content ORDER BY id DESC`).all() as unknown as ContentRow[];
 }
 
+export interface ReplyRow {
+  id: number;
+  content_id: number;
+  comment_id: string;
+  comment_user: string | null;
+  comment_text: string | null;
+  reply_text: string;
+  reply_id: string | null;
+  created_at: string;
+}
+
+/** comment_ids already answered — one reply per comment, enforced here. */
+export function answeredCommentIds(): Set<string> {
+  const rows = db.prepare(`SELECT comment_id FROM thread_replies`).all() as Array<{ comment_id: string }>;
+  return new Set(rows.map((r) => r.comment_id));
+}
+
+export function recordReply(input: {
+  content_id: number; comment_id: string; comment_user?: string | null;
+  comment_text?: string | null; reply_text: string; reply_id?: string | null;
+}): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO thread_replies
+     (content_id, comment_id, comment_user, comment_text, reply_text, reply_id)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(
+    input.content_id, input.comment_id, input.comment_user ?? null,
+    input.comment_text ?? null, input.reply_text, input.reply_id ?? null,
+  );
+}
+
+export function listReplies(contentId?: number): ReplyRow[] {
+  if (contentId) {
+    return db.prepare(`SELECT * FROM thread_replies WHERE content_id = ? ORDER BY id DESC`).all(contentId) as unknown as ReplyRow[];
+  }
+  return db.prepare(`SELECT * FROM thread_replies ORDER BY id DESC LIMIT 100`).all() as unknown as ReplyRow[];
+}
+
 export function setContentStatus(
   id: number,
   status: ContentRow["status"],
@@ -313,16 +367,18 @@ export function setContentStatus(
   );
 }
 
-/** Store the scraped og:title/og:image for a link. Keeps whatever was already there on null. */
+/** Store the scraped og:title/og:image/og:description + category for a link. Keeps whatever was already there on null. */
 export function enrichLink(
   id: number,
-  patch: { product?: string | null; image_url?: string | null },
+  patch: { product?: string | null; image_url?: string | null; deskripsi?: string | null; kategori?: string | null },
 ): void {
-  const current = getLink(id);
+  const current = getLink(id) as (LinkRow & { deskripsi?: string | null }) | undefined;
   if (!current) return;
-  db.prepare(`UPDATE links SET product = ?, image_url = ? WHERE id = ?`).run(
+  db.prepare(`UPDATE links SET product = ?, image_url = ?, deskripsi = ?, kategori = ? WHERE id = ?`).run(
     patch.product ?? current.product ?? null,
     patch.image_url ?? current.image_url ?? null,
+    patch.deskripsi ?? current.deskripsi ?? null,
+    patch.kategori ?? current.kategori ?? null,
     id,
   );
 }

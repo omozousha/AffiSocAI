@@ -17,18 +17,18 @@ const { addLink, addContent, listContent, listLinks, setContentStatus, parseShop
 
 // C1: shopee id parsing from a resolved url with query junk
 assert.deepEqual(
-  parseShopee("https://shopee.co.id/opaanlp/1337935037/28620395139?__mobile__=1&x=2"),
-  { shopId: "1337935037", itemId: "28620395139", shop: "opaanlp" },
+  parseShopee("https://shopee.co.id/{{SHOP_SLUG}}/1337935037/28620395139?__mobile__=1&x=2"),
+  { shopId: "1337935037", itemId: "28620395139", shop: "{{SHOP_SLUG}}" },
   "must pull shopId/itemId/shop out of the product path",
 );
 
 // C2: first insert captures the parsed ids
 const a = addLink({
   short_url: "https://s.shopee.co.id/5fp1UF7Q7o",
-  resolved_url: "https://shopee.co.id/opaanlp/1337935037/28620395139",
+  resolved_url: "https://shopee.co.id/{{SHOP_SLUG}}/1337935037/28620395139",
   note: "manual",
 });
-assert.equal(a.shop, "opaanlp");
+assert.equal(a.shop, "{{SHOP_SLUG}}");
 assert.equal(a.shopee_shop_id, "1337935037");
 assert.equal(a.shopee_item_id, "28620395139");
 

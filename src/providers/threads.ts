@@ -313,6 +313,7 @@ export class ThreadsAdapter implements SocialProvider {
           media_type: "CAROUSEL",
           children: childIds.join(","),
           text: content.text ?? "",
+          ...(content.topicTag ? { topic_tag: content.topicTag } : {}),
           access_token: token,
         });
         containerId = String(parent.id);
@@ -325,6 +326,9 @@ export class ThreadsAdapter implements SocialProvider {
               media_type: one ? (isVideo ? "VIDEO" : "IMAGE") : "TEXT",
               ...(one ? (isVideo ? { video_url: one } : { image_url: one }) : {}),
               text: content.text ?? "",
+              // Max 1 topic_tag per post: routes into the topic feed
+              // (official API; the unofficial threads-api bundle has no slot).
+              ...(content.topicTag ? { topic_tag: content.topicTag } : {}),
               access_token: token,
             })
           ).id,

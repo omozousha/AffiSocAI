@@ -34,3 +34,9 @@ Thumbs.db
 # node
 node_modules/
 dist/
+
+# deploy env files (may carry secrets later)
+deploy/*.env
+web/node_modules
+web/dist
+public/dist

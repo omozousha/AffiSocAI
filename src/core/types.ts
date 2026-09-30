@@ -23,6 +23,8 @@ export interface SocialContent {
   /** Unix seconds. When set the provider must support scheduling. */
   scheduledAt?: number;
   link?: string;
+  /** Threads topic_tag (max 1 per post): routes the post into a topic feed. */
+  topicTag?: string | null;
 }
 
 export type VerificationStatus =

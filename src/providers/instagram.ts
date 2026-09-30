@@ -33,7 +33,7 @@ const CAPABILITIES: ProviderCapabilities = {
   videoPost: true,
   carouselPost: true,
   scheduledPost: false, // no scheduling action exists in the toolkit
-  postStatus: false,
+  postStatus: true,
   analytics: true,
   connect: true,
 };
@@ -120,9 +120,9 @@ export class InstagramAdapter implements SocialProvider {
     });
     if (!res.ok) return this.wrap(res);
 
-    // An image container is already published by the POST call. A reel container
-    // has to be published separately once it reaches FINISHED.
-    if (content.mediaKind === "video") return this.publishContainer(res);
+    // Image containers also need the separate PUBLISH call — POST alone leaves
+    // a FINISHED-but-unpublished container (proven: id 18207518320369207).
+    if (content.mediaKind === "video" || content.mediaKind === "image") return this.publishContainer(res);
     return this.wrap(res);
   }
 
@@ -162,6 +162,30 @@ export class InstagramAdapter implements SocialProvider {
       pending: Boolean(res.data?.id && !res.data?.permalink),
       evidence: res.data,
     };
+  }
+
+  async getPostStatus(postId: string): Promise<PostStatus> {
+    // Proven discriminator: a LIVE media answers fields=id,caption; an
+    // unpublished container errors on caption (id-only works for both).
+    try {
+      const m = await composio.execute("INSTAGRAM_GET_IG_MEDIA", {
+        ig_media_id: String(postId),
+        fields: "id,caption",
+      });
+      if (m.ok && m.data?.id && typeof m.data?.caption === "string") {
+        return { postId, state: "published", detail: "caption readable" };
+      }
+      return { postId, state: "failed", detail: String(m.error ?? JSON.stringify(m.data)).slice(0, 200) };
+    } catch (e) { return { postId, state: "unknown", detail: String(e).slice(0, 160) }; }
+  }
+
+  async _legacyGetIgMedia(postId: string): Promise<PostStatus> {
+    const res = await composio.execute("INSTAGRAM_GET_IG_MEDIA", {
+      ig_media_id: postId,
+      fields: "id,permalink,caption,media_type,timestamp",
+    });
+    if (!res.ok || !res.data?.id) return { postId, state: "unknown", detail: res.error ?? "media not found" };
+    return { postId, state: res.data.permalink ? "published" : "processing", detail: res.data.permalink ?? undefined };
   }
 
   async getAnalytics(postId: string): Promise<PostAnalytics> {

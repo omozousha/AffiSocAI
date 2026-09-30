@@ -21,9 +21,11 @@ import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LinkRow } from "./store.ts";
+import { buildIdentity } from "./product-identity.ts";
+import { imagePromptFor } from "./product-hook.ts";
 import { recreateImage, generateImage } from "./router-image.ts";
 import { updateLinkImage } from "./store.ts";
-import { presetPrompt, DEFAULT_PRESET, findPreset } from "./image-presets.ts";
+import { presetPrompt, DEFAULT_PRESET, findPreset, PREMIUM_IMG2IMG_PROMPT } from "./image-presets.ts";
 import { qwenEditImage, sdxlTurboImg2Img, hfSpaceHealthy, sdxlSpaceHealthy } from "./hf-space-image.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -63,6 +65,12 @@ async function pickBackend(): Promise<{ router: boolean; qwen: boolean; sdxl: bo
  * The default prompt. `kategori` shifts the setting to something plausible for
  * the product class — apparel photographed flat, gear photographed outdoors.
  */
+// product-aware hook (overrides category-only branch when name is present)
+export function defaultRecreatePromptProductAware(link: LinkRow): string {
+  const id = buildIdentity({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null });
+  return imagePromptFor(id);
+}
+
 export function defaultRecreatePrompt(link: LinkRow): string {
   const name = (link.product || "this product").trim();
   const k = (link.kategori || "").toUpperCase();
@@ -135,11 +143,15 @@ export async function recreateProductImage(
   promptText?: string,
   presetId?: string,
 ): Promise<RecreateResult> {
-  // An explicit prompt from the operator wins; otherwise the selected preset
-  // (default gesture-closeup) builds the prompt.
+  // An explicit prompt from the operator wins; otherwise the premium
+  // image-to-image master prompt (verbatim — the reference photo carries
+  // the product identity), unless a non-default preset was chosen.
   const label = (link.product || "this product").trim();
   const prompt =
-    (promptText && promptText.trim()) || presetPrompt(presetId || DEFAULT_PRESET, label, link.kategori);
+    (promptText && promptText.trim())
+    || (presetId && presetId !== DEFAULT_PRESET
+      ? presetPrompt(presetId, label, link.kategori)
+      : PREMIUM_IMG2IMG_PROMPT);
   const preset = findPreset(presetId);
   await mkdir(IMAGE_DIR, { recursive: true });
 
@@ -228,6 +240,24 @@ export async function recreateProductImage(
     preset: preset.id,
     aspect: preset.aspect,
   };
+}
+
+/** Epoch ms when the premium master prompt went live — creatives older than
+ *  this get one regeneration so the cron converges to the premium style. */
+export const PREMIUM_CUTOFF_MS = Date.now();
+
+/** True when the link's stored creative predates the premium prompt. */
+export async function needsPremiumRegen(link: LinkRow): Promise<boolean> {
+  const url = link.image_url || "";
+  const m = url.match(/link-\d+-(\d+)\.(jpg|jpeg|png|webp)$/i);
+  if (!m) return false;
+  const ts = Number(m[1]);
+  if (!Number.isFinite(ts)) return false;
+  if (ts >= PREMIUM_CUTOFF_MS) return false;
+  // Confirm the file exists locally (remote CDN names never match anyway).
+  const file = url.slice(url.lastIndexOf("/") + 1);
+  if (!/^[\w.-]+$/.test(file)) return false;
+  return await readStoredImage(file).then((r) => r !== null);
 }
 
 /** Read a stored image back out of data/images/. Used by GET /api/images/:file. */

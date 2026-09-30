@@ -1,6 +1,10 @@
 /**
  * Posting scheduler — 3 slots a day, run in-process.
  *
+ * One slot = one product posted to EVERY publishable platform (instagram,
+ * facebook, threads). Each platform gets its own caption draft + content row,
+ * so a failure on one platform never blocks the others.
+ *
  * The scheduler is NOT a separate process. It is a tick loop started by the
  * server (startScheduler at boot) that walks the queue and publishes any slot
  * whose time has come. Running in-process means it shares the same DB, the
@@ -25,7 +29,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { listLinks, getLink, addContent, listContent, setContentStatus } from "./store.ts";
-import { buildMysteryCaption, MYSTERY_PLATFORMS } from "./mystery-caption.ts";
+import { buildIdentity, detectType } from "./product-identity.ts";
+import { imagePromptFor } from "./product-hook.ts";
+import { buildMysteryCaption, MYSTERY_PLATFORMS, topicFor } from "./mystery-caption.ts";
 import { listProviders } from "./registry.ts";
 import { logActivity } from "./activity-log.ts";
 import type { SocialContent, SocialProvider } from "./types.ts";
@@ -85,8 +91,8 @@ db.exec(`
   );
 `);
 
-/** Local-time HH:MM -> slot index. Default 09.00 / 13.00 / 19.00 WIB. */
-export const DEFAULT_SLOT_TIMES = ["09:00", "13:00", "19:00"] as const;
+/** Local-time HH:MM -> slot index. Default: morning scroll / lunch / evening prime (WIB). */
+export const DEFAULT_SLOT_TIMES = ["07:30", "12:30", "19:30"] as const;
 
 function metaGet(key: string): string | null {
   const row = db.prepare(`SELECT value FROM scheduler_meta WHERE key = ?`).get(key) as
@@ -195,6 +201,45 @@ export function ensureHorizon(days = 2): number {
   return created;
 }
 
+/**
+ * Add ONE new HH:MM to the pattern and materialize its slots.
+ * New time whose clock time is still ahead today gets a slot TODAY
+ * (so "tambah jam 20:00 jam 19:00" posts tonight); a time already past
+ * today only materializes from tomorrow on. Returns the saved times plus
+ * where the new time landed ("today" | "tomorrow").
+ */
+export function addSlotTime(hhmm: string): { times: string[]; lands: "today" | "tomorrow" } {
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(hhmm || "").trim());
+  if (!m) throw new Error(`bad HH:MM: ${hhmm}`);
+  const v = `${m[1]!.padStart(2, "0")}:${m[2]}`;
+  const merged = [...new Set([...slotTimes(), v])].sort().slice(0, 6);
+  const times = setSlotTimes(merged);
+  // Materialize: tomorrow always; today only the still-future slot.
+  // NOTE: today's insert uses MAX(slot_index)+1, NOT the position in the
+  // pattern — inserting at pattern index collides with an existing row from
+  // the older pattern (UNIQUE slot_date+slot_index) and silently no-ops.
+  const now = new Date();
+  const today = dayKey(now);
+  const when = atTime(today, v);
+  let lands: "today" | "tomorrow" = "tomorrow";
+  if (when.getTime() > now.getTime() + 60_000) {
+    const maxRow = db
+      .prepare(`SELECT MAX(slot_index) AS mx FROM post_slots WHERE slot_date = ?`)
+      .get(today) as { mx: number | null } | undefined;
+    const idx = (maxRow?.mx ?? -1) + 1;
+    const r = db
+      .prepare(
+        `INSERT INTO post_slots (slot_date, slot_index, scheduled_for)
+         VALUES (?, ?, ?)
+         ON CONFLICT(slot_date, slot_index) DO NOTHING`,
+      )
+      .run(today, idx, utcStamp(when));
+    if ((r.changes ?? 0) > 0) lands = "today";
+  }
+  ensureSlots(new Date(now.getTime() + 86_400_000));
+  return { times, lands };
+}
+
 export function listSlots(opts: { date?: string; status?: SlotStatus; limit?: number } = {}): SlotRow[] {
   const where: string[] = [];
   const args: unknown[] = [];
@@ -208,6 +253,11 @@ export function listSlots(opts: { date?: string; status?: SlotStatus; limit?: nu
 
 function getSlot(id: number): SlotRow | undefined {
   return db.prepare(`SELECT * FROM post_slots WHERE id = ?`).get(id) as SlotRow | undefined;
+}
+
+/** Public getter for the /api/schedule/run guard. */
+export function getSlotById(id: number): SlotRow | undefined {
+  return getSlot(id);
 }
 
 /** Slots that are due and unclaimed, or claimed by a lease that has expired. */
@@ -283,24 +333,39 @@ export function setSchedulerEnabled(on: boolean): void {
  * image are excluded — an unmedia'd post is rejected higher up anyway, and
  * skipping them here keeps the log honest about *why* nothing was posted.
  */
-export function pickLink(): ReturnType<typeof getLink> {
+export function pickLink(preferNew = true): ReturnType<typeof getLink> {
   const links = listLinks().filter((l) => !!l.image_url);
   if (links.length === 0) return undefined;
 
+  const todayStr = dayKey(new Date());
+  const postedToday = new Set<number>();
   const lastByLink = new Map<number, string>();
   for (const s of listSlots({ limit: 200 })) {
     if (s.link_id == null || s.status !== "published") continue;
+    if (s.slot_date === todayStr) postedToday.add(s.link_id);
     const prev = lastByLink.get(s.link_id);
     if (!prev || s.scheduled_for > prev) lastByLink.set(s.link_id, s.scheduled_for);
   }
-  const used = [...lastByLink.entries()].sort((a, b) => (a[1] < b[1] ? 1 : -1));
-  const oldestUsedId = used.length ? used[used.length - 1]![0] : null;
-  if (oldestUsedId != null) {
-    const l = getLink(oldestUsedId);
-    if (l?.image_url) return l;
-  }
-  // Nothing posted yet, or every posted link is gone: newest first.
-  return links[links.length - 1];
+
+  // 1) Newest never-posted link first — fresh products get priority.
+  const fresh = links.filter((l) => !lastByLink.has(l.id));
+  if (preferNew && fresh.length > 0) return fresh[fresh.length - 1];
+
+  // 2) Otherwise least-recently-posted, but never a link already posted today.
+  const rest = links
+    .filter((l) => !postedToday.has(l.id))
+    .sort((a, b) => {
+      const ta = lastByLink.get(a.id) ?? "";
+      const tb = lastByLink.get(b.id) ?? "";
+      return ta < tb ? -1 : ta > tb ? 1 : 0;
+    });
+  if (rest.length > 0) return rest[0];
+
+  // 3) Everything was posted today already: random pick (SQLite RANDOM()).
+  const row = db.prepare(
+    `SELECT id FROM links WHERE image_url IS NOT NULL AND image_url != '' ORDER BY RANDOM() LIMIT 1`,
+  ).get() as { id: number } | undefined;
+  return row ? getLink(row.id) : links[links.length - 1];
 }
 
 /**
@@ -323,16 +388,28 @@ function publishablePlatforms(): { provider: SocialProvider; platform: PlatformK
   return out;
 }
 
-type PreparedPost = {
-  link_id: number;
+type PreparedTarget = {
   platform: PlatformKey;
   draft: ReturnType<typeof buildMysteryCaption>;
+  /** Final caption text (draft.body + Threads inline link when applicable). */
+  text: string;
   media_url: string;
   content_id: number;
+  /** Threads topic_tag derived from the link's product type (null = none). */
+  topicTag: string | null;
 };
 
-/** Build caption + persist a draft row, or throw. Never publishes. */
-function preparePost(slot: SlotRow): PreparedPost {
+/** One slot's fan-out: the same link prepared for every platform. */
+type PreparedPost = {
+  link_id: number;
+  targets: PreparedTarget[];
+};
+
+/**
+ * Build caption + persist a draft row per platform, or throw. Never publishes.
+ * The link is picked ONCE per slot so every platform posts the same product.
+ */
+async function preparePost(slot: SlotRow): Promise<PreparedPost> {
   const link = pickLink();
   if (!link) throw new Error("no link with an image available to post");
 
@@ -342,31 +419,75 @@ function preparePost(slot: SlotRow): PreparedPost {
       "no publishable platform: every provider is disconnected or cannot post media",
     );
   }
-  const target = targets[(slot.attempts - 1) % targets.length]!;
 
-  const draft = buildMysteryCaption(target.platform, {
-    short_url: link.short_url,
-    resolved_url: link.resolved_url,
-    shopee_shop_id: link.shopee_shop_id,
-    shopee_item_id: link.shopee_item_id,
-    shop: link.shop,
-    product: link.product,
-    image_url: link.image_url,
-  });
-
-  const mediaUrl = absoluteForProvider(link.image_url!);
+  const idForImg = buildIdentity({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null });
+  const _imgPromptProductAware = imagePromptFor(idForImg); // used by recreate-image chain
+  // Same rule as POST /api/links/:id/post: never publish the raw Shopee CDN
+  // photo when a generated creative is missing — recreate first. Links whose
+  // image was generated with a pre-premium prompt are also regenerated, so
+  // the cron converges every product to the premium style over time.
+  // The creative is generated ONCE per slot and shared by all platforms.
+  let mediaUrl = absoluteForProvider(link.image_url!);
+  const looksGenerated = /^https?:\/\/affine\.realpaytrans\.my\.id\/api\/images\//.test(mediaUrl) || mediaUrl.startsWith("/api/images/");
+  const { recreateProductImage } = await import("./recreate-image.ts");
+  if (!looksGenerated) {
+    try {
+      const gen = await recreateProductImage(link);
+      if (gen.ok) mediaUrl = absoluteForProvider(gen.served_url);
+    } catch { /* keep the CDN photo — a post beats no post */ }
+  } else {
+    // Regenerate once: creatives made before the premium master prompt
+    // (file older than the prompt's introduction) get one regeneration.
+    // Afterwards the file is fresh and this branch stays quiet.
+    try {
+      const { needsPremiumRegen } = await import("./recreate-image.ts");
+      if (await needsPremiumRegen(link)) {
+        const gen = await recreateProductImage(link);
+        if (gen.ok) mediaUrl = absoluteForProvider(gen.served_url);
+      }
+    } catch { /* keep the existing creative on any failure */ }
+  }
   if (!mediaUrl) throw new Error("recreated image has no fetchable URL");
 
-  const row = addContent({
-    link_id: link.id,
-    platform: target.platform,
-    kind: "image",
-    body: draft.body,
-    media_url: mediaUrl,
-    first_comment: null,
-  });
+  const publishIndex = (slot.attempts ?? 0) + (slot.id % 100);
+  const prepared: PreparedPost = { link_id: link.id, targets: [] };
+  for (const target of targets) {
+    const draft = buildMysteryCaption(target.platform, {
+      short_url: link.short_url,
+      resolved_url: link.resolved_url,
+      shopee_shop_id: link.shopee_shop_id,
+      shopee_item_id: link.shopee_item_id,
+      shop: link.shop,
+      product: link.product,
+      image_url: link.image_url,
+      kategori: link.kategori ?? null,
+    }, publishIndex);
 
-  return { link_id: link.id, platform: target.platform, draft, media_url: mediaUrl, content_id: row.id };
+    let text = draft.body;
+    if (target.platform === "threads" && link.short_url && !text.includes(link.short_url)) {
+      text = `${text}\n\n${link.short_url}`;
+    }
+
+    const row = addContent({
+      link_id: link.id,
+      platform: target.platform,
+      kind: "image",
+      body: text,
+      media_url: mediaUrl,
+      first_comment: null,
+    });
+
+    prepared.targets.push({
+      platform: target.platform,
+      draft,
+      text,
+      media_url: mediaUrl,
+      content_id: row.id,
+      topicTag: target.platform === "threads" ? topicFor(detectType(idForImg)) : null,
+    });
+  }
+
+  return prepared;
 }
 
 /**
@@ -399,11 +520,19 @@ function providerFor(slug: string): SocialProvider | undefined {
   return listProviders().find((p) => p.slug === slug);
 }
 
-/** Run one claimed slot end to end. Returns the slot after its outcome is stored. */
+/**
+ * Run one claimed slot end to end: the same product goes to EVERY publishable
+ * platform. Per-platform outcome:
+ *   - ok → its content row published, counted in `done`
+ *   - validate/publish fail → its content row rejected, slot error notes it
+ * The slot is `published` when at least one platform succeeded; otherwise it
+ * returns to pending (retry) until attempts run out, then failed.
+ * Returns the slot after its outcome is stored.
+ */
 export async function runSlot(slot: SlotRow): Promise<SlotRow> {
   let prepared: PreparedPost;
   try {
-    prepared = preparePost(slot);
+    prepared = await preparePost(slot);
   } catch (e) {
     const msg = String(e).slice(0, 400);
     finishSlot(slot.id, {
@@ -423,101 +552,139 @@ export async function runSlot(slot: SlotRow): Promise<SlotRow> {
     return getSlot(slot.id)!;
   }
 
-  const provider = providerFor(prepared.platform);
-  if (!provider) {
-    unclaimSlot(slot.id, `provider ${prepared.platform} not registered`);
-    return getSlot(slot.id)!;
-  }
+  const done: { platform: string; content_id: number; post_id: string | null; post_url: string | null }[] = [];
+  const failed: { platform: string; content_id: number; error: string }[] = [];
 
-  const content: SocialContent = {
-    text: prepared.draft.body,
-    mediaUrl: prepared.media_url,
-    mediaKind: "image",
-    link: linkShort(prepared.link_id),
-  };
-
-  const t0 = Date.now();
-  try {
-    const check = await provider.validateContent(content);
-    if (!check.ok) {
-      setContentStatus(prepared.content_id, "rejected", { error: check.errors.join("; ") });
-      finishSlot(slot.id, { status: "failed", error: check.errors.join("; ") });
-      logActivity({
-        level: "warn",
-        source: "system",
-        event: "schedule.reject",
-        message: check.errors.join("; "),
-        meta: { platform: prepared.platform, content_id: prepared.content_id },
-      });
-      return getSlot(slot.id)!;
+  for (const target of prepared.targets) {
+    const provider = providerFor(target.platform);
+    if (!provider) {
+      setContentStatus(target.content_id, "rejected", { error: `provider ${target.platform} not registered` });
+      failed.push({ platform: target.platform, content_id: target.content_id, error: "provider not registered" });
+      continue;
     }
 
-    const res = await provider.publish(content);
-    const ms = Date.now() - t0;
+    const content: SocialContent = {
+      text: target.text,
+      mediaUrl: target.media_url,
+      mediaKind: "image",
+      link: linkShort(prepared.link_id),
+      ...(target.topicTag ? { topicTag: target.topicTag } : {}),
+    };
 
-    if (res.ok) {
-      setContentStatus(prepared.content_id, "published", {
-        post_id: res.postId ?? null,
-        post_url: res.url ?? null,
-        error: null,
-      });
-      finishSlot(slot.id, {
-        status: "published",
-        link_id: prepared.link_id,
-        platform: prepared.platform,
-        content_id: prepared.content_id,
-        post_id: res.postId ?? null,
-        post_url: res.url ?? null,
-        error: null,
-      });
-      logActivity({
-        level: "info",
-        source: "system",
-        event: "schedule.publish",
-        status: 200,
-        duration_ms: ms,
-        message: res.url || res.postId || "published",
-        meta: {
-          platform: prepared.platform,
-          link_id: prepared.link_id,
-          content_id: prepared.content_id,
-          slot_date: slot.slot_date,
-          slot_index: slot.slot_index,
-        },
-      });
-    } else {
-      setContentStatus(prepared.content_id, "rejected", { error: res.error ?? null });
-      // A provider error is usually transient (token refresh, rate limit), so
-      // hand the slot back and let a later tick try again — unless it has
-      // already burned its attempts, then it stays failed.
-      const err = (res.error || "publish failed").slice(0, 400);
-      finishSlot(slot.id, {
-        status: slot.attempts > 3 ? "failed" : "pending",
-        error: err,
-        link_id: prepared.link_id,
-        platform: prepared.platform,
-        content_id: prepared.content_id,
-      });
+    const t0 = Date.now();
+    try {
+      const check = await provider.validateContent(content);
+      if (!check.ok) {
+        const err = check.errors.join("; ");
+        setContentStatus(target.content_id, "rejected", { error: err });
+        failed.push({ platform: target.platform, content_id: target.content_id, error: err });
+        logActivity({
+          level: "warn",
+          source: "system",
+          event: "schedule.reject",
+          message: err,
+          meta: { platform: target.platform, content_id: target.content_id },
+        });
+        continue;
+      }
+
+      const res = await provider.publish(content);
+      const ms = Date.now() - t0;
+
+      if (res.ok) {
+        // Instagram hands back a container id that may never go live — verify
+        // via getPostStatus (permalink present = really published).
+        let igNote: string | null = null;
+        if (target.platform === "instagram" && res.postId && provider.getPostStatus) {
+          const st = await provider.getPostStatus(res.postId);
+          if (st.state !== "published") {
+            igNote = `instagram verify: ${st.state} (${st.detail ?? "no permalink"})`;
+            setContentStatus(target.content_id, "rejected", { error: igNote });
+            failed.push({ platform: target.platform, content_id: target.content_id, error: igNote });
+            logActivity({
+              level: "warn",
+              source: "system",
+              event: "schedule.publish",
+              status: 502,
+              duration_ms: ms,
+              message: igNote,
+              meta: { platform: target.platform, content_id: target.content_id, attempts: slot.attempts },
+            });
+            continue;
+          }
+        }
+        setContentStatus(target.content_id, "published", {
+          post_id: res.postId ?? null,
+          post_url: res.url ?? null,
+          error: null,
+        });
+        done.push({ platform: target.platform, content_id: target.content_id, post_id: res.postId ?? null, post_url: res.url ?? null });
+        logActivity({
+          level: "info",
+          source: "system",
+          event: "schedule.publish",
+          status: 200,
+          duration_ms: ms,
+          message: res.url || res.postId || "published",
+          meta: {
+            platform: target.platform,
+            link_id: prepared.link_id,
+            content_id: target.content_id,
+            slot_date: slot.slot_date,
+            slot_index: slot.slot_index,
+          },
+        });
+      } else {
+        const err = (res.error || "publish failed").slice(0, 400);
+        setContentStatus(target.content_id, "rejected", { error: err });
+        failed.push({ platform: target.platform, content_id: target.content_id, error: err });
+        logActivity({
+          level: "error",
+          source: "system",
+          event: "schedule.publish",
+          status: 502,
+          duration_ms: ms,
+          message: err,
+          meta: { platform: target.platform, content_id: target.content_id, attempts: slot.attempts },
+        });
+      }
+    } catch (e) {
+      const err = String(e).slice(0, 400);
+      setContentStatus(target.content_id, "rejected", { error: err });
+      failed.push({ platform: target.platform, content_id: target.content_id, error: err });
       logActivity({
         level: "error",
         source: "system",
-        event: "schedule.publish",
-        status: 502,
-        duration_ms: ms,
+        event: "schedule.error",
         message: err,
-        meta: { platform: prepared.platform, content_id: prepared.content_id, attempts: slot.attempts },
+        meta: { platform: target.platform, content_id: target.content_id },
       });
     }
-  } catch (e) {
-    const err = String(e).slice(0, 400);
-    unclaimSlot(slot.id, err);
-    setContentStatus(prepared.content_id, "rejected", { error: err });
-    logActivity({
-      level: "error",
-      source: "system",
-      event: "schedule.error",
-      message: err,
-      meta: { platform: prepared.platform, content_id: prepared.content_id },
+  }
+
+  // Slot verdict from the fan-out: any success wins; total failure retries.
+  const first = done[0];
+  if (first) {
+    const errNote = failed.length
+      ? `partial: ${failed.map((f) => `${f.platform}: ${f.error}`).join(" | ").slice(0, 300)}`
+      : null;
+    finishSlot(slot.id, {
+      status: "published",
+      link_id: prepared.link_id,
+      platform: done.map((d) => d.platform).join(","),
+      content_id: first.content_id,
+      post_id: first.post_id,
+      post_url: first.post_url,
+      error: errNote,
+    });
+  } else {
+    const err = failed.map((f) => `${f.platform}: ${f.error}`).join(" | ").slice(0, 400) || "all platforms failed";
+    finishSlot(slot.id, {
+      status: slot.attempts > 3 ? "failed" : "pending",
+      error: err,
+      link_id: prepared.link_id,
+      platform: null,
+      content_id: failed[0]?.content_id ?? null,
     });
   }
   return getSlot(slot.id)!;
@@ -537,6 +704,15 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
   for (const slot of due) {
     if (!claimSlot(slot.id, OWNER)) continue; // lost the race
     ran.push(await runSlot(slot));
+  }
+  if (ran.length > 0 || due.length > 0) {
+    logActivity({
+      level: "info",
+      source: "system",
+      event: "schedule.tick",
+      message: `tick ran ${ran.length}/${due.length} due slots`,
+      meta: { ran: ran.map((s) => ({ id: s.id, status: s.status, platform: s.platform, post_id: s.post_id })) },
+    });
   }
   return { ran, created };
 }
@@ -584,10 +760,12 @@ export function schedulerStatus(): {
       published: today.filter((s) => s.status === "published").length,
     },
     next,
-    platforms: MYSTERY_PLATFORMS.map((slug) => {
-      const p = listProviders().find((v) => v.slug === slug);
-      return { slug, ready: !!p && p.status === "VERIFIED-EXECUTED" && !!p.capabilities.imagePost };
-    }),
+    platforms: listProviders()
+      .filter((p) => MYSTERY_PLATFORMS.includes(p.slug as (typeof MYSTERY_PLATFORMS)[number]))
+      .map((p) => ({
+        slug: p.slug,
+        ready: p.status === "VERIFIED-EXECUTED" && !!p.capabilities.imagePost,
+      })),
   };
 }
 

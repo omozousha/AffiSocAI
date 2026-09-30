@@ -132,6 +132,36 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     ].join(" "),
     aspect: "1:1",
   },
+  {
+    id: "lifestyle-room",
+    label: "Lifestyle ruangan",
+    prompt: [
+      "Warm lifestyle photograph of the product styled in a real lived-in room, morning window light with soft long shadows, cozy textile layers around it, shallow depth of field, the product tack-sharp and hero of the frame.",
+      "{{PRODUCT}}",
+      "{{IDENTITY}}",
+    ].join(" "),
+    aspect: "4:3",
+  },
+  {
+    id: "macro-detail",
+    label: "Macro detail",
+    prompt: [
+      "Dramatic macro close-up of the product's most interesting texture or detail, raking side light revealing every stitch, weave or grain, dark blurred background, luxury commercial photography.",
+      "{{PRODUCT}}",
+      "{{IDENTITY}}",
+    ].join(" "),
+    aspect: "1:1",
+  },
+  {
+    id: "night-neon",
+    label: "Malam neon",
+    prompt: [
+      "Moody night photograph of the product on a wet reflective surface, neon pink and cyan rim light, cinematic haze, premium tech-ad mood, product perfectly lit and legible.",
+      "{{PRODUCT}}",
+      "{{IDENTITY}}",
+    ].join(" "),
+    aspect: "4:3",
+  },
 ];
 
 export const DEFAULT_PRESET = "gesture-closeup";
@@ -148,3 +178,44 @@ export function presetPrompt(presetId: string | null | undefined, productLabel: 
     .split("{{SCENE}}").join(`Scene: ${categoryScene(kategori)}`)
     .split("{{IDENTITY}}").join(`${IDENTITY} ${NEVER_RENDER}`);
 }
+
+/**
+ * Premium image-to-image master prompt (operator-supplied).
+ * Used verbatim: the reference photo carries the product identity, so no
+ * product label is injected — the model preserves the photo's subject.
+ */
+export const PREMIUM_IMG2IMG_PROMPT = `Transform the provided product photo into a premium, professional e-commerce product image.
+
+Preserve the original product exactly as the main subject, including its shape, proportions, structure, materials, colors, textures, important details, and recognizable characteristics. Do not redesign, replace, or invent the product.
+
+Improve the overall visual presentation to make the product look attractive, clean, modern, premium, trustworthy, and professionally photographed for an online shop.
+
+Create a visually appealing commercial product photography composition with:
+- clean and polished appearance
+- professional studio lighting
+- soft realistic shadows
+- natural highlights and reflections
+- balanced exposure
+- accurate and realistic colors
+- sharp product details
+- subtle depth and dimensionality
+- clean background with a premium minimalist aesthetic
+- visually balanced composition
+- suitable negative space around the product
+- realistic perspective
+- high-end commercial photography quality
+- crisp edges and fine material details
+- subtle separation between the product and background
+- natural-looking contrast
+- premium visual hierarchy
+- optimized composition for online shopping platforms
+
+Make the product immediately noticeable and visually appealing while keeping the image realistic and commercially credible.
+
+The final image should look like a professionally produced e-commerce product photograph, suitable for product listings, marketplaces, catalogs, advertisements, social media commerce, and promotional materials.
+
+Do not add any brand name, logo, watermark, slogan, promotional text, price, badge, label, packaging redesign, or artificial product features.
+
+Do not change the identity or fundamental appearance of the original product.
+
+Photorealistic, premium commercial product photography, realistic materials, realistic lighting, highly detailed, clean, elegant, modern, professional, visually appealing, high resolution.`;
