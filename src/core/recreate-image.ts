@@ -44,6 +44,8 @@ export type RecreateResult =
       backend: ImageBackend | null;
       preset: string;
       aspect: string;
+      /** Which reference photo was used (original CDN vs current image). */
+      ref_used: string | null;
     }
   | { ok: false; error: string };
 
@@ -159,7 +161,16 @@ export async function recreateProductImage(
   let mode: "image-to-image" | "text-to-image" = "text-to-image";
   let backend: ImageBackend | null = null;
 
-  const source = await fetchSource(link.image_url || "");
+  // Reference priority: the sealed ORIGINAL Shopee photo first (the true
+  // product), then the current image. Regenerating from a previous creative
+  // drifts the product every cycle — that is how a chair becomes a shoe.
+  const refs = [link.image_original, link.image_url].filter((u): u is string => !!u);
+  let source: Buffer | null = null;
+  let refUsed: string | null = null;
+  for (const ref of refs) {
+    source = await fetchSource(ref);
+    if (source) { refUsed = ref; break; }
+  }
   if (source) {
     const mime = sniff(source);
     if (mime) {
@@ -239,6 +250,7 @@ export async function recreateProductImage(
     backend,
     preset: preset.id,
     aspect: preset.aspect,
+    ref_used: refUsed,
   };
 }
 

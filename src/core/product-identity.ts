@@ -58,7 +58,10 @@ export function detectType(id: ProductIdentity): ProductType {
 
   if (/HELM|KACAMATA|SUNGLASS|HEADGEAR/.test(hay)) return "helm";
   if (/SEPATU|SANDAL|SHOES|SNEAKERS|SLIPON/.test(hay)) return "sepatu";
-  if (/TAS|BACKPACK|RANSEL|BAG|DOMPET|WALLET/.test(hay)) return "tas";
+  // ORDER MATTERS + WORD BOUNDARIES: "SERBAGUNA" contains "BAG", "KERTAS"
+  // contains "TAS" — bare substrings turn a folding chair into a bag.
+  if (/KURSI\s*LIPAT|FOLDING\s*CHAIR/.test(hay)) return "outdoor";
+  if (/\bTAS\b|BACKPACK|RANSEL|SELEMPANG|\bBAGS?\b|DOMPET|WALLET/.test(hay)) return "tas";
   if (/GADGET|ELEKTRONIK|HP|PHONE|CHARGER|EARPHONE|SPEAKER|HEADPHONE|MOUSE|KEYBOARD|KABEL/.test(hay)) return "gadget";
   if (/SKINCARE|BEAUTY|MAKEUP|SERUM|MOISTURIZER|TONER|SABUN|BEDAK|LIPSTIK|PARFUM/.test(hay)) return "skincare";
   if (/OUTDOOR|CAMPING|HIKING|TENDA|SLEEPING BAG|MATRAS|LAMPU|KOBOKAYU/.test(hay)) return "outdoor";
