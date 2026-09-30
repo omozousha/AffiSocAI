@@ -134,6 +134,17 @@ export default function Jadwal() {
     await saveTimes(times);
   };
 
+  /** Client-side preview: today if still ahead (WIB), else tomorrow — mirrors backend addSlotTime. */
+  const landsPreview = (hhmm: string): "today" | "tomorrow" => {
+    const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(hhmm);
+    if (!m) return "tomorrow";
+    const now = new Date();
+    const wib = new Date(now.getTime() + (7 * 60 + now.getTimezoneOffset()) * 60_000);
+    const target = new Date(wib);
+    target.setHours(Number(m[1]), Number(m[2]), 0, 0);
+    return target.getTime() > wib.getTime() + 60_000 ? "today" : "tomorrow";
+  };
+
   const hmValid = /^([01]?\d|2[0-3]):[0-5]\d$/.test(newHm.trim());
 
   const addTime = async () => {
@@ -251,15 +262,34 @@ export default function Jadwal() {
                   <Clock className="h-3.5 w-3.5" /> Jam (WIB)
                 </span>
                 <Input
-                  type="time"
                   value={newHm}
-                  onChange={(e) => setNewHm(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="cth 19:30"
+                  maxLength={5}
+                  onChange={(e) => {
+                    let v = e.target.value.replace(/[^0-9]/g, "").slice(0, 4);
+                    if (v.length > 2) v = v.slice(0, 2) + ":" + v.slice(2);
+                    setNewHm(v);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") addTime();
                   }}
-                  aria-label="Jam baru"
+                  aria-label="Jam baru HH:MM"
                 />
               </label>
+              <div className="flex flex-wrap gap-1.5">
+                {["07:30", "12:00", "17:50", "19:30"].map((t) => (
+                  <Button key={t} variant="outline" size="sm" onClick={() => setNewHm(t)}>
+                    {t}
+                  </Button>
+                ))}
+              </div>
+              {hmValid && (
+                <p className="text-sm text-emerald-200">
+                  masuk slot {landsPreview(newHm.trim()) === "today" ? "HARI INI" : "BESOK"}
+                  {landsPreview(newHm.trim()) === "tomorrow" ? " (waktu hari ini sudah lewat)" : " — tick 60 detik jalan otomatis"}
+                </p>
+              )}
               <div className="flex justify-end gap-2">
                 <Button variant="ghost" onClick={() => setOpen(false)}>
                   Batal
