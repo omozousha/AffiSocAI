@@ -797,7 +797,9 @@ const server = createServer(async (req, res) => {
       let media = absoluteImageUrl(link.image_url);
       if (!media.startsWith("/api/images/") && !/^https?:\/\/affine\.realpaytrans\.my\.id\/api\/images\//.test(media)) {
         const gen = await recreateProductImage(link);
-        if (gen.ok) media = absoluteImageUrl(gen.served_url);
+        // live=false: review rejected the creative (file kept for review UI,
+        // original photo stays). Use the sealed original, not the rejected file.
+        if (gen.ok && gen.live) media = absoluteImageUrl(gen.served_url);
       }
       // Threads renders bare URLs as tappable link cards; the mystery caption
       // deliberately withholds the link ("cek di bio"), so append the short

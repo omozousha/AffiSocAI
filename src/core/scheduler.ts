@@ -550,7 +550,8 @@ async function preparePost(slot: SlotRow): Promise<PreparedPost> {
   if (!looksGenerated) {
     try {
       const gen = await recreateProductImage(link);
-      if (gen.ok) mediaUrl = absoluteForProvider(gen.served_url);
+      // live=false = review rejected → keep mediaUrl on the original photo.
+      if (gen.ok && gen.live) mediaUrl = absoluteForProvider(gen.served_url);
     } catch { /* keep the CDN photo — a post beats no post */ }
   } else {
     // Regenerate once: creatives made before the premium master prompt
@@ -560,7 +561,7 @@ async function preparePost(slot: SlotRow): Promise<PreparedPost> {
       const { needsPremiumRegen } = await import("./recreate-image.ts");
       if (await needsPremiumRegen(link)) {
         const gen = await recreateProductImage(link);
-        if (gen.ok) mediaUrl = absoluteForProvider(gen.served_url);
+        if (gen.ok && gen.live) mediaUrl = absoluteForProvider(gen.served_url);
       }
     } catch { /* keep the existing creative on any failure */ }
   }
