@@ -4,6 +4,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Input, Select, Textarea } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
+import { Spinner } from "../components/ui/spinner";
 import { api } from "../lib/utils";
 
 interface LinkRow {
@@ -39,6 +40,8 @@ export default function Links({ go }: { go: (r: string) => void }) {
   const [kategori, setKategori] = useState("");
   const [formBusy, setFormBusy] = useState(false);
   const [dryOut, setDryOut] = useState("");
+  // Per-row action spinner: id-act (mis. "12-recreate").
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -141,6 +144,8 @@ export default function Links({ go }: { go: (r: string) => void }) {
   };
 
   const rowAction = async (act: string, id: number) => {
+    const key = `${id}-${act}`;
+    setRowBusy(key);
     try {
       if (act === "posting") {
         const r = await api<{ error?: string; platform?: string; content_id?: number }>(
@@ -172,6 +177,8 @@ export default function Links({ go }: { go: (r: string) => void }) {
       load();
     } catch (e) {
       setToast(String(e));
+    } finally {
+      setRowBusy(null);
     }
   };
 
@@ -279,10 +286,10 @@ export default function Links({ go }: { go: (r: string) => void }) {
           </div>
           <div className="flex gap-2">
             <Button size="sm" variant="ghost" disabled={formBusy} onClick={doDry}>
-              Cek data (dry-run)
+              {formBusy ? <Spinner label="Cek…" /> : "Cek data (dry-run)"}
             </Button>
             <Button size="sm" disabled={formBusy} onClick={doSave}>
-              Simpan &amp; append ke sheet
+              {formBusy ? <Spinner label="Simpan…" /> : "Simpan & append ke sheet"}
             </Button>
           </div>
           {dryOut && <p className="text-xs text-zinc-400">{dryOut}</p>}
@@ -361,11 +368,21 @@ export default function Links({ go }: { go: (r: string) => void }) {
                     </p>
                   )}
                   <div className="mt-2 flex flex-wrap gap-1">
-                    <Button size="sm" onClick={() => rowAction("posting", l.id)}>Posting</Button>
-                    <Button size="sm" variant="secondary" onClick={() => rowAction("recreate", l.id)}>Recreate</Button>
-                    <Button size="sm" variant="ghost" onClick={() => rowAction("bio", l.id)}>Bio</Button>
-                    <Button size="sm" variant="ghost" onClick={() => rowAction("enrich", l.id)}>Enrich</Button>
-                    <Button size="sm" variant="destructive" onClick={() => rowAction("hapus", l.id)}>Hapus</Button>
+                    <Button size="sm" disabled={rowBusy === `${l.id}-posting`} onClick={() => rowAction("posting", l.id)}>
+                      {rowBusy === `${l.id}-posting` ? <Spinner label="Posting…" /> : "Posting"}
+                    </Button>
+                    <Button size="sm" variant="secondary" disabled={rowBusy === `${l.id}-recreate`} onClick={() => rowAction("recreate", l.id)}>
+                      {rowBusy === `${l.id}-recreate` ? <Spinner label="Recreate…" /> : "Recreate"}
+                    </Button>
+                    <Button size="sm" variant="ghost" disabled={rowBusy === `${l.id}-bio`} onClick={() => rowAction("bio", l.id)}>
+                      {rowBusy === `${l.id}-bio` ? <Spinner label="Bio…" /> : "Bio"}
+                    </Button>
+                    <Button size="sm" variant="ghost" disabled={rowBusy === `${l.id}-enrich`} onClick={() => rowAction("enrich", l.id)}>
+                      {rowBusy === `${l.id}-enrich` ? <Spinner label="Enrich…" /> : "Enrich"}
+                    </Button>
+                    <Button size="sm" variant="destructive" disabled={rowBusy === `${l.id}-hapus`} onClick={() => rowAction("hapus", l.id)}>
+                      {rowBusy === `${l.id}-hapus` ? <Spinner label="Hapus…" /> : "Hapus"}
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -406,7 +423,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
                 Batal
               </Button>
               <Button disabled={bulkBusy} onClick={confirmBulkPost}>
-                {bulkBusy ? "Posting…" : "Posting semua"}
+                {bulkBusy ? <Spinner label="Posting…" /> : "Posting semua"}
               </Button>
             </div>
           </div>

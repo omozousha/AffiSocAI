@@ -15,6 +15,7 @@ import {
 import { Input } from "../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Skeleton } from "../components/ui/skeleton";
+import { Spinner } from "../components/ui/spinner";
 import { api } from "../lib/utils";
 import {
   PLAT_LABEL,
@@ -73,6 +74,7 @@ export default function Jadwal() {
   const [jumpLabel, setJumpLabel] = useState("Besok");
   const [toast, setToast] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [savingTime, setSavingTime] = useState(false);
 
   const todayKey = () => {
     const d = new Date();
@@ -148,7 +150,8 @@ export default function Jadwal() {
   const hmValid = /^([01]?\d|2[0-3]):[0-5]\d$/.test(newHm.trim());
 
   const addTime = async () => {
-    if (!hmValid) return;
+    if (!hmValid || savingTime) return;
+    setSavingTime(true);
     try {
       const r = await api<{ times?: string[]; lands?: string; error?: string }>("/api/schedule/add-time", {
         method: "POST",
@@ -166,6 +169,8 @@ export default function Jadwal() {
       await load();
     } catch (e) {
       setToast(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingTime(false);
     }
   };
 
@@ -294,8 +299,8 @@ export default function Jadwal() {
                 <Button variant="ghost" onClick={() => setOpen(false)}>
                   Batal
                 </Button>
-                <Button onClick={addTime} disabled={!hmValid}>
-                  Tambah
+                <Button onClick={addTime} disabled={!hmValid || savingTime}>
+                  {savingTime ? <Spinner label="Simpan…" /> : "Tambah"}
                 </Button>
               </div>
             </DialogContent>
@@ -378,7 +383,7 @@ export default function Jadwal() {
                         disabled={busyId === s.id}
                         onClick={() => runSlot(s.id)}
                       >
-                        {busyId === s.id ? "…" : s.status === "failed" ? "Coba lagi" : "Jalankan"}
+                        {busyId === s.id ? <Spinner label={s.status === "failed" ? "Coba…" : "Jalan…"} /> : s.status === "failed" ? "Coba lagi" : "Jalankan"}
                       </Button>
                     )}
                   </div>

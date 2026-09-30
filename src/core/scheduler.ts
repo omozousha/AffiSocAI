@@ -361,7 +361,8 @@ export async function warmSlots(now = new Date()): Promise<number> {
       const looksGen = /\/api\/images\//.test(media);
       if (!looksGen) {
         const gen = await recreateProductImage(link);
-        if (gen.ok) media = gen.served_url;
+        // live=false = review rejected → warm the original photo instead.
+        if (gen.ok && gen.live) media = gen.served_url;
       }
       db.prepare(
         `UPDATE post_slots SET warmed_link_id = ?, warmed_media_url = ?, warmed_at = datetime('now')
@@ -834,6 +835,36 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
   try {
     warmed = await warmSlots(now);
   } catch { /* warming is best-effort — the due path still works */ }
+
+  // Threads auto-reply sweep — same tick, opt-in via THREADS_AUTOREPLY=1.
+  // Manual POST still works; the tick just stops needing a separate cron.
+  // Best-effort: a reply failure never blocks the posting path below.
+  try {
+    if (process.env.THREADS_AUTOREPLY === "1") {
+      const { scanReplies } = await import("./thread-replies.ts");
+      const { answeredCommentIds, recordReply } = await import("./store.ts");
+      const published = listContent().filter(
+        (c) => c.platform === "threads" && c.status === "published" && c.post_id,
+      );
+      if (published.length > 0) {
+        const out = await scanReplies(published, answeredCommentIds(), { dryRun: false });
+        for (const r of out.published) {
+          try {
+            recordReply({ content_id: r.contentId, comment_id: r.commentId, comment_user: r.commentUser, comment_text: r.commentText, reply_text: r.replyText });
+          } catch { /* one bad row never blocks the rest */ }
+        }
+        if (out.published.length > 0) {
+          logActivity({
+            level: "info",
+            source: "system",
+            event: "threads.autoreply",
+            message: `auto-replied ${out.published.length} threads comments`,
+            meta: { replied: out.published.map((r) => ({ content: r.contentId, comment: r.commentId })) },
+          });
+        }
+      }
+    }
+  } catch { /* reply sweep is best-effort — the due path still works */ }
 
   const due = claimableSlots(now);
   const ran: SlotRow[] = [];
