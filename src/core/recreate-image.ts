@@ -25,6 +25,7 @@ import { buildIdentity } from "./product-identity.ts";
 import { imagePromptFor } from "./product-hook.ts";
 import { recreateImage, generateImage } from "./router-image.ts";
 import { updateLinkImage } from "./store.ts";
+import { reviewCreative, type ReviewVerdict } from "./image-review.ts";
 import { presetPrompt, DEFAULT_PRESET, findPreset, PREMIUM_IMG2IMG_PROMPT } from "./image-presets.ts";
 import { qwenEditImage, sdxlTurboImg2Img, hfSpaceHealthy, sdxlSpaceHealthy } from "./hf-space-image.ts";
 
@@ -46,6 +47,10 @@ export type RecreateResult =
       aspect: string;
       /** Which reference photo was used (original CDN vs current image). */
       ref_used: string | null;
+      /** Review gate outcome — mimo sees, JEV decides. */
+      review: ReviewVerdict;
+      /** False when the creative failed review: file kept, image_url untouched. */
+      live: boolean;
     }
   | { ok: false; error: string };
 
@@ -231,13 +236,26 @@ export async function recreateProductImage(
   const ext = result.mime === "image/png" ? "png" : result.mime === "image/webp" ? "webp" : "jpg";
   const file = `link-${link.id}-${Date.now()}.${ext}`;
   const path = join(IMAGE_DIR, file);
-  await writeFile(path, Buffer.from(result.bytes));
+  const buf = Buffer.from(result.bytes);
+  await writeFile(path, buf);
 
+  // REVIEW GATE: mimo sees the bytes, JEV approves (non-router backends).
+  // Rejected creative stays on disk for the review UI, but image_url is NOT
+  // touched — the post falls back to the sealed original photo.
+  const review = await reviewCreative(link.product || "", buf, {
+    backend: backend ?? "unknown",
+    byteLen: buf.length,
+  });
   const served = `/api/images/${file}`;
-  try {
-    updateLinkImage(link.id, served);
-  } catch (e) {
-    console.error("[recreate] could not persist image_url:", String(e).slice(0, 200));
+  const live = review.approved || process.env.AFFILIATE_REVIEW_BYPASS === "1";
+  if (live) {
+    try {
+      updateLinkImage(link.id, served);
+    } catch (e) {
+      console.error("[recreate] could not persist image_url:", String(e).slice(0, 200));
+    }
+  } else {
+    console.warn(`[recreate] review REJECT link ${link.id} (${backend}): ${review.reason} — file kept, original photo stays live`);
   }
 
   return {
@@ -251,6 +269,8 @@ export async function recreateProductImage(
     preset: preset.id,
     aspect: preset.aspect,
     ref_used: refUsed,
+    review,
+    live,
   };
 }
 

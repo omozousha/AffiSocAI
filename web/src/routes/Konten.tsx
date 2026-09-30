@@ -3,6 +3,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Input, Select, Textarea } from "../components/ui/input";
+import { Spinner } from "../components/ui/spinner";
 import { api } from "../lib/utils";
 
 const POST_PLATS = ["instagram", "facebook", "threads"];
@@ -39,6 +40,8 @@ export default function Konten() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [bodies, setBodies] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
+  const [saveBusy, setSaveBusy] = useState<number | null>(null);
+  const [postBusy, setPostBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [rows, setRows] = useState<ContentRow[]>([]);
   const [fp, setFp] = useState("");
@@ -120,10 +123,15 @@ export default function Konten() {
   };
 
   const saveOne = async (i: number) => {
-    const r = await submitDraft(i);
-    if (!r) return;
-    setToast(r.status === 200 || r.status === 201 ? "draft disimpan" : "simpan gagal");
-    loadRows();
+    setSaveBusy(i);
+    try {
+      const r = await submitDraft(i);
+      if (!r) return;
+      setToast(r.status === 200 || r.status === 201 ? "draft disimpan" : "simpan gagal");
+      loadRows();
+    } finally {
+      setSaveBusy(null);
+    }
   };
 
   const saveAll = async () => {
@@ -144,6 +152,7 @@ export default function Konten() {
   const doPost = async () => {
     if (!confirmPost) return;
     const id = Number(linkId);
+    setPostBusy(true);
     try {
       const r = await api<{ error?: string; platform?: string; post_id?: string; content_id?: number }>(
         `/api/links/${id}/post`,
@@ -157,6 +166,7 @@ export default function Konten() {
     } catch (e) {
       setToast(String(e));
     } finally {
+      setPostBusy(false);
       setConfirmPost(null);
       loadRows();
     }
@@ -221,10 +231,10 @@ export default function Konten() {
           </div>
           <div className="flex gap-2">
             <Button size="sm" disabled={busy} onClick={doGen}>
-              Generate caption
+              {busy ? <Spinner label="Generate…" /> : "Generate caption"}
             </Button>
             <Button size="sm" variant="secondary" disabled={busy || !drafts.length} onClick={saveAll}>
-              Simpan semua draft
+              {busy ? <Spinner label="Simpan…" /> : "Simpan semua draft"}
             </Button>
           </div>
           {drafts.map((d, i) => {
@@ -251,8 +261,8 @@ export default function Konten() {
                     {body.length}/{limit} karakter{d.needsMedia ? " · butuh gambar" : " · link di bio"}
                   </p>
                   <div className="mt-1 flex gap-1">
-                    <Button size="sm" variant="secondary" onClick={() => saveOne(i)}>
-                      Simpan draft ini
+                    <Button size="sm" variant="secondary" disabled={saveBusy === i} onClick={() => saveOne(i)}>
+                      {saveBusy === i ? <Spinner label="Simpan…" /> : "Simpan draft ini"}
                     </Button>
                     <Button
                       size="sm"
@@ -320,10 +330,12 @@ export default function Konten() {
             </p>
             <p className="mb-3 text-xs text-zinc-500">{confirmPost.body.length} karakter</p>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setConfirmPost(null)}>
+              <Button variant="ghost" disabled={postBusy} onClick={() => setConfirmPost(null)}>
                 Batal
               </Button>
-              <Button onClick={doPost}>Posting</Button>
+              <Button disabled={postBusy} onClick={doPost}>
+                {postBusy ? <Spinner label="Posting…" /> : "Posting"}
+              </Button>
             </div>
           </div>
         </div>
