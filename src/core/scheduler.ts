@@ -334,8 +334,15 @@ export function setSchedulerEnabled(on: boolean): void {
  * skipping them here keeps the log honest about *why* nothing was posted.
  */
 export function pickLink(preferNew = true): ReturnType<typeof getLink> {
-  const links = listLinks().filter((l) => !!l.image_url);
-  if (links.length === 0) return undefined;
+  const all = listLinks();
+  if (all.length === 0) return undefined;
+  // Links with a verified image go first; links without one are still
+  // eligible — preparePost enriches + recreates on the fly instead of
+  // starving them forever behind the same 2-3 imaged links.
+  const links = all.filter((l) => !!l.image_url);
+  const imageless = all.filter((l) => !l.image_url);
+  const pool = links.length > 0 ? links : imageless;
+  if (pool.length === 0) return undefined;
 
   const todayStr = dayKey(new Date());
   const postedToday = new Set<number>();
@@ -348,11 +355,11 @@ export function pickLink(preferNew = true): ReturnType<typeof getLink> {
   }
 
   // 1) Newest never-posted link first — fresh products get priority.
-  const fresh = links.filter((l) => !lastByLink.has(l.id));
+  const fresh = pool.filter((l) => !lastByLink.has(l.id));
   if (preferNew && fresh.length > 0) return fresh[fresh.length - 1];
 
   // 2) Otherwise least-recently-posted, but never a link already posted today.
-  const rest = links
+  const rest = pool
     .filter((l) => !postedToday.has(l.id))
     .sort((a, b) => {
       const ta = lastByLink.get(a.id) ?? "";
@@ -365,7 +372,7 @@ export function pickLink(preferNew = true): ReturnType<typeof getLink> {
   const row = db.prepare(
     `SELECT id FROM links WHERE image_url IS NOT NULL AND image_url != '' ORDER BY RANDOM() LIMIT 1`,
   ).get() as { id: number } | undefined;
-  return row ? getLink(row.id) : links[links.length - 1];
+  return row ? getLink(row.id) : pool[pool.length - 1];
 }
 
 /**
@@ -410,8 +417,34 @@ type PreparedPost = {
  * The link is picked ONCE per slot so every platform posts the same product.
  */
 async function preparePost(slot: SlotRow): Promise<PreparedPost> {
-  const link = pickLink();
-  if (!link) throw new Error("no link with an image available to post");
+  let link = pickLink();
+  if (!link) throw new Error("no link available to post");
+
+  // Imageless link picked: enrich (og fetch) + seal + recreate NOW, so it
+  // can still post this slot instead of being skipped forever.
+  if (!link.image_url) {
+    const { fetchOg, checkImageUrl } = await import("./shopee.ts");
+    try {
+      const og = await fetchOg(link.short_url);
+      if (og?.title || og?.image) {
+        const { productName } = await import("./templates.ts");
+        const { enrichLink } = await import("./store.ts");
+        let verified = false;
+        if (og.image) verified = (await checkImageUrl(og.image)).ok;
+        const prod = og.title ? productName(og.title) : link.product;
+        const img = (verified ? og.image : null) ?? link.image_url;
+        enrichLink(link.id, { product: prod, image_url: img, deskripsi: og.description ?? link.deskripsi });
+        if (verified && og.image) {
+          const { sealOriginalImage, getLink } = await import("./store.ts");
+          sealOriginalImage(link.id, og.image);
+          link = getLink(link.id) ?? link;
+        } else {
+          link = { ...link, product: prod, image_url: img };
+        }
+      }
+    } catch { /* keep the row as-is — recreate attempt below decides */ }
+  }
+  if (!link.image_url) throw new Error(`link ${link.id} has no fetchable image even after enrich`);
 
   const targets = publishablePlatforms();
   if (targets.length === 0) {

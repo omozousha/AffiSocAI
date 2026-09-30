@@ -22,6 +22,8 @@ export type LinkRow = {
   shop: string | null;
   product: string | null;
   image_url: string | null;
+  /** The untouched Shopee og:image — img2img reference + mismatch audit. */
+  image_original: string | null;
   deskripsi: string | null;
   kategori: string | null;
   sheet_id: number | null;
@@ -61,6 +63,7 @@ db.exec(`
     shopee_item_id  TEXT,
     product         TEXT,
     image_url       TEXT,
+    image_original  TEXT,
     deskripsi       TEXT,
     kategori        TEXT,
     sheet_id        INTEGER UNIQUE,
@@ -101,7 +104,7 @@ if (!cols.some((c) => c.name === "first_comment")) {
 }
 // Migration for a database created before product enrichment existed.
 const linkCols = db.prepare(`PRAGMA table_info(links)`).all() as unknown as Array<{ name: string }>;
-for (const [col, ddl] of [["product", "TEXT"], ["image_url", "TEXT"], ["deskripsi", "TEXT"], ["kategori", "TEXT"], ["sheet_id", "INTEGER"]] as const) {
+for (const [col, ddl] of [["product", "TEXT"], ["image_url", "TEXT"], ["image_original", "TEXT"], ["deskripsi", "TEXT"], ["kategori", "TEXT"], ["sheet_id", "INTEGER"]] as const) {
   if (!linkCols.some((c) => c.name === col)) {
     db.exec(`ALTER TABLE links ADD COLUMN ${col} ${ddl}`);
   }
@@ -270,7 +273,22 @@ export function getLinkBySheetId(sheetId: number): LinkRow | undefined {
  * image column is touched — sourcing fields stay as they were.
  */
 export function updateLinkImage(id: number, image_url: string): void {
+  // image_original is write-once: the first persisted image is the Shopee
+  // og:image, so it stays as the regeneration reference + mismatch baseline.
+  const cur = getLink(id);
+  if (cur && !cur.image_original && cur.image_url && /^https?:\/\//i.test(cur.image_url)) {
+    db.prepare("UPDATE links SET image_url = ?, image_original = ? WHERE id = ?").run(image_url, cur.image_url, id);
+    return;
+  }
   db.prepare("UPDATE links SET image_url = ? WHERE id = ?").run(image_url, id);
+}
+
+/**
+ * Seal the original Shopee image on a link (write-once). Called by the
+ * scrape pipeline; recreate never touches this column afterwards.
+ */
+export function sealOriginalImage(id: number, original: string): void {
+  db.prepare("UPDATE links SET image_original = COALESCE(image_original, ?) WHERE id = ?").run(original, id);
 }
 
 export function getLink(id: number): LinkRow | undefined {

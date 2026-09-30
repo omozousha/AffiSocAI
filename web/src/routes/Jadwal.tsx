@@ -192,6 +192,61 @@ export default function Jadwal() {
       {err && <p className="text-sm text-red-400">gagal: {err}</p>}
       {toast && <p className="text-sm text-emerald-200">{toast}</p>}
 
+      {adding && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => {
+            setAdding(false);
+            setNewHm("");
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-zinc-700 bg-zinc-950 p-5"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Tambah jam posting"
+          >
+            <h3 className="mb-1 text-base font-semibold">Tambah jam posting</h3>
+            <p className="mb-3 text-sm text-zinc-400">
+              Format HH:MM (WIB). Jam yang masih di depan hari ini masuk slot hari
+              ini, yang sudah lewat masuk besok.
+            </p>
+            <Input
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+              value={newHm}
+              onChange={(e) => setNewHm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") addTime();
+                if (e.key === "Escape") {
+                  setAdding(false);
+                  setNewHm("");
+                }
+              }}
+              placeholder="HH:MM"
+              maxLength={5}
+              inputMode="numeric"
+              aria-label="Jam baru HH:MM"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setAdding(false);
+                  setNewHm("");
+                }}
+              >
+                Batal
+              </Button>
+              <Button onClick={addTime} disabled={!/^([01]?\d|2[0-3]):[0-5]\d$/.test(newHm.trim())}>
+                Tambah
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Card>
         <CardHeader>
           <div>
@@ -309,32 +364,11 @@ export default function Jadwal() {
                   </button>
                 </Badge>
               ))}
-              {(st?.slot_times ?? []).length < 6 &&
-                (adding ? (
-                  <span className="flex items-center gap-1">
-                    <Input
-                      value={newHm}
-                      onChange={(e) => setNewHm(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") addTime();
-                        if (e.key === "Escape") {
-                          setAdding(false);
-                          setNewHm("");
-                        }
-                      }}
-                      placeholder="HH:MM"
-                      maxLength={5}
-                      className="h-7 w-20"
-                    />
-                    <Button size="sm" onClick={addTime}>
-                      ✓
-                    </Button>
-                  </span>
-                ) : (
-                  <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-                    + tambah jam
-                  </Button>
-                ))}
+              {(st?.slot_times ?? []).length < 6 && (
+                <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+                  + tambah jam
+                </Button>
+              )}
             </div>
             <p className="mt-1 text-xs text-zinc-500">Maksimal 6 jam. Jam baru berlaku mulai besok — lihat seksi Besok di bawah.</p>
           </div>

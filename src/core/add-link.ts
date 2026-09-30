@@ -21,7 +21,7 @@
  * the only correct order.
  */
 
-import { addLink, enrichLink, getLinkByUrl, attachSheetId } from "./store.ts";
+import { addLink, enrichLink, getLinkByUrl, attachSheetId, sealOriginalImage } from "./store.ts";
 import { fetchOg, checkImageUrl } from "./shopee.ts";
 import { classifyCategory } from "./category.ts";
 import { productName } from "./templates.ts";
@@ -172,6 +172,12 @@ export async function addLinkPipeline(
   if (existing && (product || image_url || deskripsi || kategori)) {
     enrichLink(inserted.id, { product, image_url, deskripsi, kategori: kategori || existing.kategori });
     row = { ...inserted, product: product ?? inserted.product, image_url: image_url ?? inserted.image_url, deskripsi: deskripsi ?? inserted.deskripsi, kategori: kategori || inserted.kategori };
+  }
+  // Seal the untouched Shopee image: the first verified og:image becomes the
+  // permanent img2img reference. Recreate output must never overwrite it.
+  if (imageVerified && og?.image) {
+    try { sealOriginalImage(row.id, og.image); } catch { /* non-fatal */ }
+    row = { ...row, image_original: row.image_original ?? og.image };
   }
   // Distinguish a genuine insert from an idempotent re-add: addLink returns the
   // existing row unchanged when the short_url is already stored, so a row that
