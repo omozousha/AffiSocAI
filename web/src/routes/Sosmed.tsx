@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -26,6 +26,19 @@ export default function Sosmed() {
   const [lastOut, setLastOut] = useState("");
   const [busyKey, setBusyKey] = useState("");
 
+  // Flow cookie session state
+  interface FlowStatus { live: boolean; count: number; earliestExpiry: string | null; daysLeft: number | null }
+  const [flowSt, setFlowSt] = useState<FlowStatus | null>(null);
+  const [flowBusy, setFlowBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const refreshFlow = useCallback(async () => {
+    try {
+      const r = await api<FlowStatus>("/api/flow/status");
+      setFlowSt(r.body);
+    } catch { /* silently ignore */ }
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
       const r = await api<{ providers?: Provider[] }>("/api/providers");
@@ -39,7 +52,8 @@ export default function Sosmed() {
 
   useEffect(() => {
     refresh();
-  }, [refresh]);
+    refreshFlow();
+  }, [refresh, refreshFlow]);
 
   useEffect(() => {
     if (!toast) return;
@@ -266,6 +280,101 @@ export default function Sosmed() {
               <pre className="mt-1 max-h-48 overflow-auto rounded bg-zinc-900 p-2">{lastOut}</pre>
             </details>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Google Flow Cookie Session */}
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Google Flow 🍌</CardTitle>
+            <CardDescription>
+              Import cookies JSON dari Chrome — Nano Banana 2 gratis ~180 hari.
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {/* Status badge */}
+          <div className="flex items-center gap-2">
+            <Badge variant={flowSt?.live ? "default" : "outline"}>
+              {flowSt?.live ? "AKTIF" : flowSt === null ? "…" : "TIDAK AKTIF"}
+            </Badge>
+            {flowSt?.live && (
+              <span className="text-xs text-zinc-400">
+                {flowSt.count} cookies · expire {flowSt.earliestExpiry} ({flowSt.daysLeft} hari lagi)
+              </span>
+            )}
+            {flowSt && !flowSt.live && flowSt.count > 0 && (
+              <span className="text-xs text-red-400">Cookies expired — reimport.</span>
+            )}
+          </div>
+
+          {/* File import */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setFlowBusy(true);
+                try {
+                  const text = await file.text();
+                  const body = JSON.parse(text);
+                  const r = await api<{ ok: boolean; count?: number; earliestExpiry?: string; error?: string }>(
+                    "/api/flow/cookies",
+                    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
+                  );
+                  if (r.status === 200) {
+                    setToast(`Flow: ${r.body.count} cookies disimpan · expire ${r.body.earliestExpiry}`);
+                    await refreshFlow();
+                  } else {
+                    setToast(r.body.error || "gagal import cookies");
+                  }
+                } catch (err) {
+                  setToast(`Error: ${String(err)}`);
+                } finally {
+                  setFlowBusy(false);
+                  if (fileRef.current) fileRef.current.value = "";
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              disabled={flowBusy}
+              onClick={() => fileRef.current?.click()}
+            >
+              {flowBusy ? "Mengimpor…" : "Import cookies JSON"}
+            </Button>
+            <Button size="sm" variant="ghost" disabled={flowBusy} onClick={refreshFlow}>
+              Refresh status
+            </Button>
+            {flowSt?.live && (
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={flowBusy}
+                onClick={async () => {
+                  setFlowBusy(true);
+                  try {
+                    await api("/api/flow/cookies", { method: "DELETE" });
+                    setToast("Flow session dihapus");
+                    await refreshFlow();
+                  } finally {
+                    setFlowBusy(false);
+                  }
+                }}
+              >
+                Hapus sesi
+              </Button>
+            )}
+          </div>
+
+          <p className="text-xs text-zinc-500">
+            Export dari Chrome: buka flow.google.com saat login → ekstensi cookie export (mis. EditThisCookie) → Export JSON → upload di sini.
+          </p>
         </CardContent>
       </Card>
     </div>

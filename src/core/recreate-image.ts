@@ -26,6 +26,8 @@ import { imagePromptFor } from "./product-hook.ts";
 import { recreateImage, generateImage } from "./router-image.ts";
 import { updateLinkImage } from "./store.ts";
 import { reviewCreative, type ReviewVerdict } from "./image-review.ts";
+import { flowGenerateImage } from "./flow-image.ts";
+import { flowStatus } from "./flow-auth.ts";
 import { presetPrompt, DEFAULT_PRESET, findPreset, PREMIUM_IMG2IMG_PROMPT } from "./image-presets.ts";
 import { qwenEditImage, sdxlTurboImg2Img, hfSpaceHealthy, sdxlSpaceHealthy } from "./hf-space-image.ts";
 
@@ -56,7 +58,7 @@ export type RecreateResult =
 
 /** Which backend produced the image. Surfaced so an operator can tell a
  *  low-fidelity CPU result from a proper one. */
-export type ImageBackend = "router" | "hf-qwen" | "hf-sdxl" | "router-t2i";
+export type ImageBackend = "router" | "hf-qwen" | "hf-sdxl" | "router-t2i" | "flow-nano-banana";
 
 /**
  * Health probe for the chain. The router is the primary backend and answers
@@ -182,6 +184,22 @@ export async function recreateProductImage(
       const dataUri = `data:${mime};base64,${source.toString("base64")}`;
       const backends = await pickBackend();
 
+      // 0. Flow Nano Banana 2 — best quality, text-to-image via browser session.
+      //    Activated when cookies are present. Falls through on failure.
+      const fs = flowStatus();
+      if (fs.live && (fs.daysLeft ?? 0) > 0) {
+        try {
+          const fr = await flowGenerateImage(prompt);
+          if (fr.ok) {
+            result = { bytes: fr.bytes, mime: fr.mime };
+            mode = "text-to-image";
+            backend = "flow-nano-banana";
+          }
+        } catch (e) {
+          console.error("[recreate] flow nano-banana failed:", String(e).slice(0, 160));
+        }
+      }
+
       // 1. Router img2img — best fidelity (~15s), 1024px.
       //    It fails transiently (429/502/503 during upstream exhaustion), so
       //    retry once before declaring it down.
@@ -196,8 +214,9 @@ export async function recreateProductImage(
         }
       }
 
-      // 2. HF Qwen Space — ZeroGPU quota, so only when healthy. ~25s, 1024px.
-      if (!result && backends.qwen) {
+      // 2. HF Qwen Space — skipped when AFFILIATE_IMG_BACKEND=gemini
+      //    (operator choice: Gemini only until an alternative is found).
+      if (!result && backends.qwen && process.env.AFFILIATE_IMG_BACKEND !== "gemini") {
         try {
           result = await qwenEditImage(source, prompt);
           mode = "image-to-image";
@@ -207,9 +226,9 @@ export async function recreateProductImage(
         }
       }
 
-      // 3. HF SDXL CPU — no quota, ~140s, 512px. Slow but always available,
-      //    which is what makes it the last img2img rung.
-      if (!result && backends.sdxl) {
+      // 3. HF SDXL CPU — skipped when AFFILIATE_IMG_BACKEND=gemini
+      //    (operator choice: Gemini only until an alternative is found).
+      if (!result && backends.sdxl && process.env.AFFILIATE_IMG_BACKEND !== "gemini") {
         try {
           result = await sdxlTurboImg2Img(source, prompt);
           mode = "image-to-image";

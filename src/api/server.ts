@@ -48,6 +48,7 @@ import { recreateProductImage } from "../core/recreate-image.ts";
 import { journeyText, renderProofCard, type JourneyStats } from "../core/journey-card.ts";
 import { IMAGE_PRESETS, DEFAULT_PRESET } from "../core/image-presets.ts";
 import { authorizeUrl, exchangeCode, clearThreadsToken } from "../providers/threads.ts";
+import { parseCookieUpload, saveFlowCookies, clearFlowCookies, flowStatus } from "../core/flow-auth.ts";
 import type { SocialContent } from "../core/types.ts";
 /** Current UTC "YYYY-MM-DD HH:MM:SS" — same frame as the slot columns. */
 function nowUtcStamp(): string {
@@ -850,6 +851,29 @@ const server = createServer(async (req, res) => {
       const body = (await readBody(req)) as { prompt?: string; preset?: string };
       const out = await recreateProductImage(link, body.prompt, body.preset);
       return json(res, out.ok ? 200 : 502, out);
+    }
+
+    /**
+     * Google Flow cookie session management.
+     *   POST   /api/flow/cookies   { cookies: [...] }  — import JSON export
+     *   GET    /api/flow/status                        — live flag + expiry
+     *   DELETE /api/flow/cookies                       — clear session
+     */
+    if (url.pathname === "/api/flow/cookies" && req.method === "POST") {
+      const body = await readBody(req);
+      const parsed = parseCookieUpload(body);
+      if (!parsed.ok) return json(res, 400, { error: parsed.error });
+      const saved = saveFlowCookies(parsed.cookies);
+      logActivity("info", "api", "flow cookies imported", { count: saved.count, earliestExpiry: saved.earliestExpiry });
+      return json(res, 200, { ok: true, ...saved });
+    }
+    if (url.pathname === "/api/flow/status" && req.method === "GET") {
+      return json(res, 200, flowStatus());
+    }
+    if (url.pathname === "/api/flow/cookies" && req.method === "DELETE") {
+      const cleared = clearFlowCookies();
+      logActivity("info", "api", "flow cookies cleared", {});
+      return json(res, 200, { ok: true, cleared });
     }
 
     /** Preset list for the image-recreate picker in the UI. */
