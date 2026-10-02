@@ -360,8 +360,7 @@ export async function warmSlots(now = new Date()): Promise<number> {
       let media = cur?.image_url ?? link.image_url;
       const looksGen = /\/api\/images\//.test(media);
       if (!looksGen) {
-        const gen = await recreateProductImage(link);
-        // live=false = review rejected → warm the original photo instead.
+        const gen = await recreateProductImage(link, undefined, undefined, { flowOnly: true });
         if (gen.ok && gen.live) media = gen.served_url;
       }
       db.prepare(

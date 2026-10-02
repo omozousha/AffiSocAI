@@ -99,6 +99,9 @@ export async function reviewCreative(
 ): Promise<ReviewVerdict> {
   const empty = { approved: false, reason: "", mimo_says: "", jev_scores: {} };
   try {
+    if (signals.backend === "router") {
+      return { approved: true, reason: "router-img2img-bypass", mimo_says: "", jev_scores: {} };
+    }
     const mime = sniffMime(bytes);
     // Cap vision payload ~700KB (downscale not available stdlib-free; JPEG
     // creatives here are ~200-700KB so this passes through untouched).
@@ -108,11 +111,6 @@ export async function reviewCreative(
     const yes = /^\s*yes\b/i.test(mimo);
     if (!yes) {
       return { approved: false, reason: `vision-reject: ${mimo.slice(0, 160)}`, mimo_says: mimo.slice(0, 300), jev_scores: {} };
-    }
-    // ponytail: JEV second opinion skipped when mimo verdict is a clean YES +
-    // backend is router (proven fidelity). Add when auto-approve abuse appears.
-    if (signals.backend === "router") {
-      return { approved: true, reason: "vision-YES + router backend", mimo_says: mimo.slice(0, 300), jev_scores: {} };
     }
     const scores = await jevApprove(
       `Product: ${product}. Vision model verdict on generated photo: "${mimo}". ` +

@@ -160,12 +160,49 @@ export default function Links({ go }: { go: (r: string) => void }) {
         const r = await api<{ error?: string }>(`/api/links/${id}/enrich`, { method: "POST" });
         setToast(r.status === 200 ? `#${id} enriched` : r.body.error || "enrich gagal");
       } else if (act === "recreate") {
-        const r = await api<{ error?: string }>(`/api/links/${id}/recreate-image`, {
+        const r = await api<{ error?: string; jobId?: string; status?: string }>(`/api/links/${id}/recreate-image`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: "{}",
         });
-        setToast(r.status === 200 ? `gambar #${id} dibuat ulang` : r.body.error || "recreate gagal");
+        if (r.status === 202 && r.body.jobId) {
+          // Flow async — poll until done
+          const jobId = r.body.jobId;
+          setToast(`🍌 Flow generate dimulai — menunggu hasil…`);
+          const poll = async () => {
+            for (let i = 0; i < 60; i++) {
+              await new Promise(res => setTimeout(res, 5000));
+              try {
+                const p = await api<{ status: string; result?: { ok?: boolean; live?: boolean; backend?: string; error?: string; served_url?: string } }>(
+                  `/api/links/${id}/recreate-image/status?jobId=${jobId}`
+                );
+                if (p.body.status === "running") {
+                  setToast(`🍌 Flow sedang generate… ${((i + 1) * 5)}s`);
+                  continue;
+                }
+                if (p.body.status === "done") {
+                  const res = p.body.result;
+                  setToast(res?.ok && res?.live
+                    ? `✅ Flow berhasil (${res.backend}) — gambar #${id} diperbarui`
+                    : res?.ok && !res?.live
+                      ? `⚠️ Flow generate tapi gate reject — foto asli dipakai`
+                      : `❌ Flow gagal: ${res?.error || "unknown"}`);
+                  load();
+                  return;
+                }
+                if (p.body.status === "error") {
+                  setToast(`❌ Flow error: ${p.body.result?.error || "unknown"}`);
+                  return;
+                }
+              } catch { /* ignore poll error, retry */ }
+            }
+            setToast("⏱ Flow timeout — cek lagi nanti");
+          };
+          poll().finally(() => { setRowBusy(null); load(); });
+          return; // skip the finally below — poll handles cleanup
+        } else {
+          setToast(r.status === 200 ? `gambar #${id} dibuat ulang` : r.body.error || "recreate gagal");
+        }
       } else if (act === "bio") {
         const r = await api<{ error?: string }>("/api/bio/publish", {
           method: "POST",

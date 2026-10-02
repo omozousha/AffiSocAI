@@ -28,6 +28,7 @@ import { updateLinkImage } from "./store.ts";
 import { reviewCreative, type ReviewVerdict } from "./image-review.ts";
 import { flowGenerateImage } from "./flow-image.ts";
 import { flowStatus } from "./flow-auth.ts";
+import { logActivity } from "./activity-log.ts";
 import { presetPrompt, DEFAULT_PRESET, findPreset, PREMIUM_IMG2IMG_PROMPT } from "./image-presets.ts";
 import { qwenEditImage, sdxlTurboImg2Img, hfSpaceHealthy, sdxlSpaceHealthy } from "./hf-space-image.ts";
 
@@ -151,6 +152,7 @@ export async function recreateProductImage(
   link: LinkRow,
   promptText?: string,
   presetId?: string,
+  options?: { flowOnly?: boolean },
 ): Promise<RecreateResult> {
   // An explicit prompt from the operator wins; otherwise the premium
   // image-to-image master prompt (verbatim — the reference photo carries
@@ -184,19 +186,24 @@ export async function recreateProductImage(
       const dataUri = `data:${mime};base64,${source.toString("base64")}`;
       const backends = await pickBackend();
 
-      // 0. Flow Nano Banana 2 — best quality, text-to-image via browser session.
-      //    Activated when cookies are present. Falls through on failure.
-      const fs = flowStatus();
-      if (fs.live && (fs.daysLeft ?? 0) > 0) {
-        try {
-          const fr = await flowGenerateImage(prompt);
-          if (fr.ok) {
-            result = { bytes: fr.bytes, mime: fr.mime };
-            mode = "text-to-image";
-            backend = "flow-nano-banana";
+      // 0. Flow Nano Banana 2 — best quality, image-to-image via browser session.
+      //    Passes the sealed original photo as reference (preserves product identity).
+      //    ONLY used in background paths (warmSlots/scheduler) — browser automation
+      //    takes 60-180s which exceeds HTTP request timeouts. Pass flowOnly=true to
+      //    activate. Default: skipped so HTTP recreate endpoint stays fast.
+      if ((options as any)?.flowOnly) {
+        const fs = flowStatus();
+        if (fs.live && (fs.daysLeft ?? 0) > 0) {
+          try {
+            const fr = await flowGenerateImage(prompt, { bytes: new Uint8Array(source), mime });
+            if (fr.ok) {
+              result = { bytes: fr.bytes, mime: fr.mime };
+              mode = fr.mode;
+              backend = "flow-nano-banana";
+            }
+          } catch (e) {
+            logActivity({ level: "warn", source: "image", event: "flow.failed", message: String(e).slice(0, 160), meta: { linkId: link.id } });
           }
-        } catch (e) {
-          console.error("[recreate] flow nano-banana failed:", String(e).slice(0, 160));
         }
       }
 

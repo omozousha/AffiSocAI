@@ -45,6 +45,43 @@ import {
   type ActivitySource,
 } from "../core/activity-log.ts";
 import { recreateProductImage } from "../core/recreate-image.ts";
+
+// ---------------------------------------------------------------------------
+// In-memory job store for async recreate (Flow takes 60-180s).
+// Jobs are ephemeral — lost on restart, which is fine: UI polls until done.
+// ---------------------------------------------------------------------------
+type JobStatus = "pending" | "running" | "done" | "error";
+interface RecreateJob {
+  id: string;
+  linkId: number;
+  status: JobStatus;
+  result?: unknown;
+  startedAt: number;
+}
+const recreateJobs = new Map<string, RecreateJob>();
+
+function newJobId(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(12)))
+    .map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Prune jobs older than 30 minutes. */
+function pruneJobs(): void {
+  const cutoff = Date.now() - 30 * 60_000;
+  for (const [k, j] of recreateJobs) if (j.startedAt < cutoff) recreateJobs.delete(k);
+}
+
+/** Run recreate in background, update job when done. */
+function startRecreateJob(job: RecreateJob, link: Parameters<typeof recreateProductImage>[0], prompt?: string, preset?: string): void {
+  job.status = "running";
+  recreateProductImage(link, prompt, preset, { flowOnly: true }).then(out => {
+    job.status = out.ok ? "done" : "error";
+    job.result = out;
+  }).catch(e => {
+    job.status = "error";
+    job.result = { ok: false, error: String(e) };
+  });
+}
 import { journeyText, renderProofCard, type JourneyStats } from "../core/journey-card.ts";
 import { IMAGE_PRESETS, DEFAULT_PRESET } from "../core/image-presets.ts";
 import { authorizeUrl, exchangeCode, clearThreadsToken } from "../providers/threads.ts";
@@ -843,12 +880,36 @@ const server = createServer(async (req, res) => {
       return json(res, 502, { error: pub.error ?? "publish failed", content_id: row.id, draft });
     }
 
+    /**
+     * Recreate product image — async (fire-and-forget) when Flow is active.
+     *   POST /api/links/:id/recreate-image        → 202 { jobId } (Flow) or 200 result (fast)
+     *   GET  /api/links/:id/recreate-image/status?jobId=xxx → job status + result
+     */
+    if (req.method === "GET" && /^\/api\/links\/\d+\/recreate-image\/status$/.test(url.pathname)) {
+      const jobId = url.searchParams.get("jobId") || "";
+      const job = recreateJobs.get(jobId);
+      if (!job) return json(res, 404, { error: "job not found" });
+      return json(res, 200, { jobId, status: job.status, result: job.result ?? null });
+    }
+
     if (req.method === "POST" && /^\/api\/links\/\d+\/recreate-image$/.test(url.pathname)) {
       const id = Number(url.pathname.split("/")[3]);
       const link = getLink(id);
       if (!link) return json(res, 404, { error: `no link with id ${id}` });
       if (!link.image_url) return json(res, 400, { error: "link has no image_url to recreate" });
       const body = (await readBody(req)) as { prompt?: string; preset?: string };
+      const { flowStatus } = await import("../core/flow-auth.ts");
+      const fs = flowStatus();
+      // Flow active → async job (202), UI polls
+      if (fs.live && (fs.daysLeft ?? 0) > 0) {
+        pruneJobs();
+        const jobId = newJobId();
+        const job: RecreateJob = { id: jobId, linkId: id, status: "pending", startedAt: Date.now() };
+        recreateJobs.set(jobId, job);
+        startRecreateJob(job, link, body.prompt, body.preset);
+        return json(res, 202, { jobId, status: "pending", message: "Flow Nano Banana sedang generate — polling /status?jobId=" + jobId });
+      }
+      // No Flow → sync Gemini (fast)
       const out = await recreateProductImage(link, body.prompt, body.preset);
       return json(res, out.ok ? 200 : 502, out);
     }
