@@ -4,6 +4,7 @@ import {
   ChevronsLeft,
   LayoutDashboard,
   Link2,
+  LogOut,
   Megaphone,
   Menu,
   ScrollText,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "./components/ui/button";
 import Dashboard from "./routes/Dashboard";
+import Login from "./routes/Login";
 import Jadwal from "./routes/Jadwal";
 import Links from "./routes/Links";
 import Konten from "./routes/Konten";
@@ -27,7 +29,7 @@ const ROUTES = [
   { id: "logs", label: "Logs", Icon: ScrollText },
 ] as const;
 
-export default function App() {
+function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
   const [route, setRoute] = useState<string>("dashboard");
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
@@ -113,6 +115,12 @@ export default function App() {
             {active.label} · React
           </div>
         )}
+        <div className="mt-auto flex items-center gap-2">
+          {!collapsed && <span className="truncate text-[11px] text-zinc-500">{user}</span>}
+          <Button size="sm" variant="ghost" className="px-2 text-zinc-400" onClick={onLogout} title="Keluar">
+            <LogOut size={14} />
+          </Button>
+        </div>
       </aside>
 
       {/* Drawer mobile — slide-in via hamburger */}
@@ -131,6 +139,12 @@ export default function App() {
           </Button>
         </div>
         {nav(true)}
+        <div className="mt-auto flex items-center justify-between text-[11px] text-zinc-500">
+          <span className="truncate">{user}</span>
+          <Button size="sm" variant="ghost" className="px-2 text-zinc-400" onClick={onLogout}>
+            <LogOut size={14} /> Keluar
+          </Button>
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -165,4 +179,27 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+export default function App() {
+  const [user, setUser] = useState<string | null>(null);
+  const [checking, setChecking] = useState(true);
+
+  // Cookie session is HttpOnly (the client cannot read it) — ask the server.
+  useEffect(() => {
+    fetch("/api/session")
+      .then((r) => r.json())
+      .then((b) => setUser(b.logged_in ? String(b.user) : null))
+      .catch(() => setUser(null))
+      .finally(() => setChecking(false));
+  }, []);
+
+  const logout = async () => {
+    await fetch("/api/logout", { method: "POST" }).catch(() => {});
+    setUser(null);
+  };
+
+  if (checking) return null;
+  if (!user) return <Login onLogin={setUser} />;
+  return <AppShell user={user} onLogout={logout} />;
 }

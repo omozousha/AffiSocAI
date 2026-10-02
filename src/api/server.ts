@@ -99,6 +99,17 @@ function nowUtcStamp(): string {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
+import {
+  COOKIE_NAME,
+  checkCredentials,
+  clearCookieHeader,
+  loginConfigured,
+  makeSessionCookie,
+  sessionCookieHeader,
+  verifySessionCookie,
+} from "../core/auth.ts";
+/** Per-IP failed-login timestamps (10-min window, 8 max) — brute-force brake. */
+const LOGIN_FAILS = new Map<string, number[]>();
 
 function envBool(name: string): boolean {
   return /^(1|true|yes|on)$/i.test(String(process.env[name] || "").trim());
@@ -132,6 +143,17 @@ function json(res: import("node:http").ServerResponse, code: number, body: unkno
   const payload = JSON.stringify(body, null, 2);
   res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
   return res.end(payload);
+}
+
+/** Value of one cookie from the request header. */
+function cookieVal(req: import("node:http").IncomingMessage, name: string): string | undefined {
+  const raw = req.headers.cookie;
+  if (!raw) return undefined;
+  for (const part of raw.split(/;\s*/)) {
+    const eq = part.indexOf("=");
+    if (eq > 0 && part.slice(0, eq) === name) return part.slice(eq + 1);
+  }
+  return undefined;
 }
 
 function html(res: import("node:http").ServerResponse, code: number, markup: string) {
@@ -196,24 +218,58 @@ const server = createServer(async (req, res) => {
   };
   try {
   /**
-   * MUTATING-ENDPOINT AUTH. Every POST/PUT/PATCH/DELETE under /api/ must
-   * carry the operator token (x-api-token header, or Authorization: Bearer).
-   * The origin is reachable through the public domain, so an unauthenticated
-   * /post or /DELETE was a real internet-facing exposure. When
-   * AFFILIATE_API_TOKEN is unset the API stays open (dev mode, logged once).
+   * LOGIN SESSION + MUTATING-ENDPOINT AUTH. Every /api/ call must be
+   * authenticated — either a valid operator session cookie (affi_session,
+   * set by POST /api/login) or the API token (x-api-token / Bearer) for
+   * scripts. Exempt: /api/login, /api/session, /api/images/* (Meta's CDN and
+   * the bio sheet fetch them without cookies) and the Threads OAuth callback
+   * (arrives as a browser redirect from Meta). When neither a token nor a
+   * password hash is configured the API stays open (dev mode, logged once).
    */
-  const mutating = req.method !== "GET" && req.method !== "HEAD" && url.pathname.startsWith("/api/");
-  if (mutating) {
+  const ap = url.pathname;
+  const authExempt =
+    ap === "/api/login" ||
+    ap === "/api/session" ||
+    ap.startsWith("/api/images/") ||
+    ap === "/api/providers/threads/callback";
+  if (ap.startsWith("/api/") && !authExempt) {
     const want = String(process.env.AFFILIATE_API_TOKEN || "").trim();
-    if (want) {
-      const got = String(req.headers["x-api-token"] || "").trim();
-      const authz = String(req.headers["authorization"] || "").trim();
-      const bearer = authz.startsWith("Bearer ") ? authz.slice(7).trim() : "";
-      if (got !== want && bearer !== want) {
-        status = 401;
-        return json(res, 401, { error: "unauthorized — send x-api-token header (AFFILIATE_API_TOKEN)" });
-      }
+    const got = String(req.headers["x-api-token"] || "").trim();
+    const authz = String(req.headers["authorization"] || "").trim();
+    const bearer = authz.startsWith("Bearer ") ? authz.slice(7).trim() : "";
+    const tokenOk = !!want && (got === want || bearer === want);
+    const sessionOk = !!verifySessionCookie(cookieVal(req, COOKIE_NAME));
+    if ((!!want || loginConfigured()) && !tokenOk && !sessionOk) {
+      status = 401;
+      return json(res, 401, { error: "unauthorized — login atau kirim x-api-token" });
     }
+  }
+  if (req.method === "GET" && ap === "/api/session") {
+    const who = verifySessionCookie(cookieVal(req, COOKIE_NAME));
+    return json(res, 200, { logged_in: !!who, user: who ?? null });
+  }
+  if (req.method === "POST" && ap === "/api/logout") {
+    res.writeHead(200, { "content-type": "application/json", "set-cookie": clearCookieHeader() });
+    return res.end('{"ok":true}');
+  }
+  if (req.method === "POST" && ap === "/api/login") {
+    if (!loginConfigured()) return json(res, 503, { error: "login belum dikonfigurasi di server (.env)" });
+    const ip = req.socket.remoteAddress || "?";
+    const now = Date.now();
+    const hist = LOGIN_FAILS.get(ip)?.filter((t) => now - t < 600_000) ?? [];
+    if (hist.length >= 8) return json(res, 429, { error: "terlalu banyak percobaan — tunggu 10 menit" });
+    const body = (await readBody(req)) as unknown as { username?: string; password?: string };
+    const who = checkCredentials(String(body.username || ""), String(body.password || ""));
+    if (!who) {
+      LOGIN_FAILS.set(ip, [...hist, now]);
+      return json(res, 401, { error: "username atau password salah" });
+    }
+    LOGIN_FAILS.set(ip, hist);
+    res.writeHead(200, {
+      "content-type": "application/json",
+      "set-cookie": sessionCookieHeader(makeSessionCookie(who)),
+    });
+    return res.end(JSON.stringify({ ok: true, user: who }));
   }
   /**
    * Static files under public/. Only paths that resolve inside PUBLIC_DIR are
