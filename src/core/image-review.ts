@@ -61,7 +61,7 @@ async function jevApprove(state: string): Promise<Record<string, number>> {
     state,
     questions: {
       is_match: { type: "noul", instructions: "Does the vision verdict confirm the photo shows the advertised product (YES verdict)?" },
-      is_safe: { type: "noul", instructions: "Is there any sign of wrong object, drift, corruption, or unusable quality in the report?" },
+      is_safe: { type: "noul", instructions: "Given the report, is the photo clean and usable for auto-posting — correct object, no drift, no corruption, acceptable quality?" },
     },
   };
   const res = await fetch(`${BASE}/systemone`, {

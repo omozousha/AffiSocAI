@@ -196,7 +196,19 @@ export async function generateImage(
  *
  * The source is passed by URL (or data URI) so the model needs to see the
  * original product to keep it identical.
+ *
+ * FIDELITY GUARD: only models PROVEN to honor the image reference may answer
+ * here. `ag/gemini-3.8-flash` returns HTTP 200 with text ("AI cannot generate
+ * raw pixels") and lower-chain models have been observed returning an inline
+ * image of a COMPLETELY DIFFERENT product when they treat the call as t2i
+ * (proven live: pump listing -> watch movement, backpack -> leather bag).
+ * So img2img walks IMG2IMG_MODELS only; everything else is a hard miss and
+ * the caller falls through to the product-name t2i path, which at least
+ * generates the right product CLASS.
  */
+const IMG2IMG_MODELS = (process.env.AFFILIATE_ROUTER_IMG2IMG_MODELS || "ag/gemini-3.1-flash-image")
+  .split(",").map((s) => s.trim()).filter(Boolean);
+
 export async function recreateImage(
   sourceImageUrl: string,
   prompt: string,
@@ -215,7 +227,7 @@ export async function recreateImage(
       },
     ],
   };
-  for (const m of imageModels()) {
+  for (const m of IMG2IMG_MODELS) {
     const { status, json } = await postRetrying("/chat/completions", { ...body, model: m });
     if (status === 200) {
       const msg = json?.choices?.[0]?.message;
@@ -227,11 +239,7 @@ export async function recreateImage(
       failures.push(`${m}: no inline image (text-only reply)`);
       continue;
     }
-    if (isModelUnavailable(status, json)) {
-      failures.push(`${m}: HTTP ${status}`);
-      continue;
-    }
-    throw new RouterError(`image recreation failed: HTTP ${status} ${JSON.stringify(json).slice(0, 300)}`);
+    failures.push(`${m}: HTTP ${status}`);
   }
-  throw new RouterError(`all image models unavailable: ${failures.join("; ")}`);
+  throw new RouterError(`img2img unavailable: ${failures.join("; ")}`);
 }

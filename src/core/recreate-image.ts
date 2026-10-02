@@ -180,10 +180,12 @@ export async function recreateProductImage(
       const dataUri = `data:${mime};base64,${source.toString("base64")}`;
       const backends = await pickBackend();
 
-      // 0. Flow Nano Banana 2 first when available — best quality img2img.
-      //    Skipped only when the operator explicitly requests sync fast path
-      //    via flowOnly=false.
-      if (!((options as any)?.flowOnly === false)) {
+      // 0. Flow Nano Banana 2 — OPT-IN ONLY (AFFILIATE_USE_FLOW=1).
+      //    Proven cost on this 4-core VPS: Chromium cold-start starves the
+      //    machine (load 4.5+, API unresponsive ~45 s) and the job still
+      //    lands on the router anyway. Default off: the sync router img2img
+      //    answers in ~20-60 s with the API responsive throughout.
+      if (process.env.AFFILIATE_USE_FLOW === "1" && !((options as any)?.flowOnly === false)) {
         const fs = flowStatus();
         if (fs.live && (fs.daysLeft ?? 0) > 0) {
           try {
@@ -192,6 +194,8 @@ export async function recreateProductImage(
               result = { bytes: fr.bytes, mime: fr.mime };
               mode = fr.mode;
               backend = "flow-nano-banana";
+            } else {
+              logActivity({ level: "warn", source: "image", event: "flow.failed", message: fr.error.slice(0, 160), meta: { linkId: link.id } });
             }
           } catch (e) {
             logActivity({ level: "warn", source: "image", event: "flow.failed", message: String(e).slice(0, 160), meta: { linkId: link.id } });
@@ -200,11 +204,24 @@ export async function recreateProductImage(
       }
 
       // 1. Router img2img — best fidelity (~15s), 1024px.
+      //    The gateway-proven reference channel is the URL itself: a direct
+      //    test with `ag/gemini-3.1-flash-image` + the susercontent URL got a
+      //    mimo vision YES, while oversized data URIs were ignored by the
+      //    model and produced a random product. Pass the data URI only when
+      //    the reference is a local path the gateway cannot fetch.
       //    It fails transiently (429/502/503 during upstream exhaustion), so
       //    retry once before declaring it down.
+      //    IDENTITY ANCHOR: the premium prompt never names the product; with a
+      //    URL reference the model sometimes invents a random object (proven:
+      //    pump -> guitar). Prefixing the product name into the img2img prompt
+      //    got a mimo-vision YES on the identical payload (proven live).
+      const img2imgPrompt = label && !prompt.includes(label)
+        ? `The product in the reference photo is: ${label}. It must remain the exact main subject.\n\n${prompt}`
+        : prompt;
+      const remoteRef = (refUsed && /^https?:\/\//.test(refUsed)) ? refUsed : dataUri;
       for (let attempt = 1; attempt <= 2 && !result; attempt++) {
         try {
-          result = await recreateImage(dataUri, prompt);
+          result = await recreateImage(remoteRef, img2imgPrompt);
           mode = "image-to-image";
           backend = "router";
         } catch (e) {
@@ -257,16 +274,15 @@ export async function recreateProductImage(
   const buf = Buffer.from(result.bytes);
   await writeFile(path, buf);
 
-  // REVIEW GATE: operator-owned generated asset.
-  // Router backend is trusted; infra/timeout failures fall back to live
-  // so the post still uses the new creative instead of blocking on review.
+  // REVIEW GATE: vision check on router2nd is reliable again (HTTP 200).
+  // Trust it now: a vision-reject means wrong product -> keep original photo.
+  // Only infra failures (timeout/HTTP error) fall back to live.
   const review = await reviewCreative(link.product || "", buf, {
     backend: backend ?? "unknown",
     byteLen: buf.length,
   });
   const served = `/api/images/${file}`;
   const live =
-    backend === "router" ||
     review.approved ||
     process.env.AFFILIATE_REVIEW_BYPASS === "1" ||
     /review-infra-fail/.test(review.reason || "");

@@ -887,8 +887,9 @@ const server = createServer(async (req, res) => {
       const body = (await readBody(req)) as { prompt?: string; preset?: string };
       const { flowStatus } = await import("../core/flow-auth.ts");
       const fs = flowStatus();
-      // Flow active → async job (202), UI polls
-      if (fs.live && (fs.daysLeft ?? 0) > 0) {
+      // Flow opt-in AND active → async job (202), UI polls. Without Flow the
+      // router path answers in 20-60 s: respond synchronously, no phantom job.
+      if (process.env.AFFILIATE_USE_FLOW === "1" && fs.live && (fs.daysLeft ?? 0) > 0) {
         pruneJobs();
         const jobId = newJobId();
         const job: RecreateJob = { id: jobId, linkId: id, status: "pending", startedAt: Date.now() };
