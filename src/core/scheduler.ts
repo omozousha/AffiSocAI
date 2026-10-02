@@ -32,7 +32,7 @@ import { listLinks, getLink, addContent, listContent, setContentStatus } from ".
 import { buildIdentity, detectType } from "./product-identity.ts";
 import { imagePromptFor } from "./product-hook.ts";
 import { buildMysteryCaption, MYSTERY_PLATFORMS, topicFor } from "./mystery-caption.ts";
-import { listProviders } from "./registry.ts";
+import { listProviders, getProvider } from "./registry.ts";
 import { logActivity } from "./activity-log.ts";
 import type { SocialContent, SocialProvider } from "./types.ts";
 import type { MysteryDraft } from "./mystery-caption.ts";
@@ -880,7 +880,42 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
       meta: { ran: ran.map((s) => ({ id: s.id, status: s.status, platform: s.platform, post_id: s.post_id })) },
     });
   }
+  /**
+   * Permalink backfill: Instagram publish returns a post_id but the permalink
+   * only exists minutes later (proven: content 71 post_url null at publish).
+   * Every tick (60 s) checks published rows still missing post_url and fills
+   * them from getPostStatus — cheap (one Composio GET per missing row).
+   */
+  try {
+    await backfillPermalinks();
+  } catch { /* best-effort; never blocks the posting path */ }
+
   return { ran, created, warmed };
+}
+
+async function backfillPermalinks(): Promise<void> {
+  const { listContent, setContentPostUrl, setLinkPublishedUrl } = await import("./store.ts");
+  const missing = listContent()
+    .filter((c) => c.status === "published" && c.post_id && !c.post_url)
+    .sort((a, b) => b.id - a.id)
+    .slice(0, 5);
+  for (const c of missing.slice(0, 5)) {
+    const p = getProvider(c.platform);
+    if (!p?.getPostStatus) continue;
+    const st = await p.getPostStatus(c.post_id!);
+    const perma = st.detail && /^https?:\/\//.test(st.detail) ? st.detail : null;
+    if (perma) {
+      setContentPostUrl(c.id, perma);
+      if (c.link_id) setLinkPublishedUrl(c.link_id, perma);
+      logActivity({
+        level: "info",
+        source: "system",
+        event: "schedule.permalink",
+        message: `post_url backfilled content ${c.id}`,
+        meta: { content_id: c.id, platform: c.platform, post_url: perma },
+      });
+    }
+  }
 }
 
 /** Publish one slot by id now, ignoring its scheduled time. */

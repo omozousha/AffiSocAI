@@ -399,7 +399,13 @@ export default function Links({ go }: { go: (r: string) => void }) {
                       <Badge variant="destructive">no img</Badge>
                     )}
                     {(l as any).published_count ? (
-                      <Badge variant="outline">published{(l as any).published_count > 1 ? ` x${(l as any).published_count}` : ""}</Badge>
+                      (l as any).published_url ? (
+                        <a href={(l as any).published_url} target="_blank" rel="noopener" className="inline-flex items-center gap-1 rounded border border-emerald-700/60 bg-emerald-950/40 px-1.5 py-0.5 text-[11px] text-emerald-300 hover:border-emerald-500">
+                          ✓ posted{(l as any).published_count > 1 ? ` x${(l as any).published_count}` : ""} ↗
+                        </a>
+                      ) : (
+                        <Badge variant="outline" className="border-amber-700/60 text-amber-300">✓ posted{(l as any).published_count > 1 ? ` x${(l as any).published_count}` : ""} (permalink menyusul)</Badge>
+                      )
                     ) : null}
                   </div>
                   {l.deskripsi && (

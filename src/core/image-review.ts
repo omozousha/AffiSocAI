@@ -94,7 +94,11 @@ export async function reviewCreative(
   const empty = { approved: false, reason: "", mimo_says: "", jev_scores: {} };
   try {
     const mime = sniffMime(bytes);
-    if (bytes.length > 900_000) return { ...empty, reason: "oversize-for-vision" };
+    // Oversize: we CANNOT judge it — that is an infra limit, not a verdict.
+    // Mark as review-infra-fail so the caller's fallback (live) applies;
+    // blocking the creative for our own size limit is what shipped wrong
+    // behaviour before. Proven: mimo takes 500-700KB JPEG fine (HTTP 200).
+    if (bytes.length > 4_000_000) return { ...empty, reason: "review-infra-fail: oversize-for-vision" };
     const dataUri = `data:${mime};base64,${bytes.toString("base64")}`;
     const mimo = await mimoCheck(product, dataUri);
     const yes = /^\s*yes\b/i.test(mimo);

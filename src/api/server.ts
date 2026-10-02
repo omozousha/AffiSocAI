@@ -196,6 +196,26 @@ const server = createServer(async (req, res) => {
   };
   try {
   /**
+   * MUTATING-ENDPOINT AUTH. Every POST/PUT/PATCH/DELETE under /api/ must
+   * carry the operator token (x-api-token header, or Authorization: Bearer).
+   * The origin is reachable through the public domain, so an unauthenticated
+   * /post or /DELETE was a real internet-facing exposure. When
+   * AFFILIATE_API_TOKEN is unset the API stays open (dev mode, logged once).
+   */
+  const mutating = req.method !== "GET" && req.method !== "HEAD" && url.pathname.startsWith("/api/");
+  if (mutating) {
+    const want = String(process.env.AFFILIATE_API_TOKEN || "").trim();
+    if (want) {
+      const got = String(req.headers["x-api-token"] || "").trim();
+      const authz = String(req.headers["authorization"] || "").trim();
+      const bearer = authz.startsWith("Bearer ") ? authz.slice(7).trim() : "";
+      if (got !== want && bearer !== want) {
+        status = 401;
+        return json(res, 401, { error: "unauthorized — send x-api-token header (AFFILIATE_API_TOKEN)" });
+      }
+    }
+  }
+  /**
    * Static files under public/. Only paths that resolve inside PUBLIC_DIR are
    * served — the index.html shell, /assets/*.css and /js/*.js route modules.
    * Everything else falls through to the API handlers below.
@@ -821,8 +841,16 @@ const server = createServer(async (req, res) => {
       const link = getLink(id);
       if (!link) return json(res, 404, { error: `no link with id ${id}` });
       if (!link.image_url) return json(res, 400, { error: "link has no image_url — run /api/links/:id/enrich first" });
-      const body = (await readBody(req)) as { platform?: string };
+      const body = (await readBody(req)) as { platform?: string; force?: boolean };
       const want = String(body.platform ?? "").toLowerCase();
+      // Idempotency guard: a double-click on Posting used to create two live
+      // posts. The same link may not re-publish within 60 min unless force.
+      if (!body.force && link.last_published_at) {
+        const ageMin = (Date.now() - new Date(link.last_published_at.replace(" ", "T") + "Z").getTime()) / 60_000;
+        if (ageMin < 60) {
+          return json(res, 409, { error: `link baru saja dipublikasikan (${Math.round(ageMin)} menit lalu) — pakai force:true untuk publish ulang` });
+        }
+      }
       const ready = MYSTERY_PLATFORMS.map((key) => ({ key, p: getProvider(key) }))
         .filter((t) => t.p && t.p.status === "VERIFIED-EXECUTED" && t.p.capabilities.imagePost);
       if (ready.length === 0) return json(res, 502, { error: "no publishable platform: every provider is disconnected or cannot post media" });

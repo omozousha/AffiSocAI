@@ -70,7 +70,7 @@ function igMystery(shop: string, hook: ReturnType<typeof pickHook>): string {
     "",
     BIO_LINE,
     "",
-    "#rekomendasi #shopee #belanjahemat #fyp #affiliate",
+    "#rekomendasi #linkdiobio #belanjahemat #fyp #affiliate",
   ]
     .join("\n")
     .replace(/{{shop}}/g, shop);
@@ -104,7 +104,7 @@ const TAGS: Record<string, string[]> = {
 };
 
 export function tagsFor(type: string): string[] {
-  return TAGS[type] ?? ["#rekomendasi", "#shopee", "#belanjahemat", "#fyp", "#affiliate"];
+  return TAGS[type] ?? ["#rekomendasi", "#linkdiobio", "#belanjahemat", "#fyp", "#affiliate"];
 }
 
 /**
@@ -160,7 +160,7 @@ export function buildMysteryCaption(
     hashtags = tags;
     body = `${hook.open}\n\n${BIO_LINE}\n\n${hashtags.join(" ")}`;
   } else if (platform === "instagram") {
-    body = igMystery(shop, hook).replace("#rekomendasi #shopee #belanjahemat #fyp #affiliate", tags.join(" "));
+    body = igMystery(shop, hook).replace("#rekomendasi #linkdiobio #belanjahemat #fyp #affiliate", tags.join(" "));
   } else if (platform === "facebook") {
     body = fbMystery(shop, hook);
   } else {

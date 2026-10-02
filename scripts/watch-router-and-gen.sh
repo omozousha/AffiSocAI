@@ -29,6 +29,7 @@ probe() {
 
 gen_one() {
   curl -s --max-time 300 -X POST "http://127.0.0.1:8787/api/links/3/recreate-image" \
+    -H "x-api-token: ${AFFILIATE_API_TOKEN:-}" \
     -H "content-type: application/json" -d "{\"preset\":\"$1\"}"
 }
 

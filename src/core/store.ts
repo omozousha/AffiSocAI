@@ -302,6 +302,15 @@ export function markLinkPublished(id: number, postUrl?: string | null): void {
   ).run(postUrl ?? null, id);
 }
 
+/** Backfill the permalink once Instagram publishes it (post_id precedes it). */
+export function setContentPostUrl(id: number, postUrl: string): void {
+  db.prepare("UPDATE content SET post_url = ?, updated_at = datetime('now') WHERE id = ?").run(postUrl, id);
+}
+
+export function setLinkPublishedUrl(id: number, postUrl: string): void {
+  db.prepare("UPDATE links SET published_url = ? WHERE id = ? AND (published_url IS NULL OR published_url = '')").run(postUrl, id);
+}
+
 /**
  * Seal the original Shopee image on a link (write-once). Called by the
  * scrape pipeline; recreate never touches this column afterwards.
