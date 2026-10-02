@@ -29,6 +29,11 @@ export type LinkRow = {
   sheet_id: number | null;
   note: string | null;
   created_at: string;
+  published_count?: number;
+  last_published_at?: string | null;
+  published_url?: string | null;
+  published_at?: string | null;
+  is_published?: string | null;
 };
 
 export type ContentRow = {
@@ -68,7 +73,9 @@ db.exec(`
     kategori        TEXT,
     sheet_id        INTEGER UNIQUE,
     note            TEXT,
-    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    published_count INTEGER NOT NULL DEFAULT 0,
+    last_published_at TEXT
   );
   CREATE TABLE IF NOT EXISTS content (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,7 +111,7 @@ if (!cols.some((c) => c.name === "first_comment")) {
 }
 // Migration for a database created before product enrichment existed.
 const linkCols = db.prepare(`PRAGMA table_info(links)`).all() as unknown as Array<{ name: string }>;
-for (const [col, ddl] of [["product", "TEXT"], ["image_url", "TEXT"], ["image_original", "TEXT"], ["deskripsi", "TEXT"], ["kategori", "TEXT"], ["sheet_id", "INTEGER"]] as const) {
+for (const [col, ddl] of [["product", "TEXT"], ["image_url", "TEXT"], ["image_original", "TEXT"], ["deskripsi", "TEXT"], ["kategori", "TEXT"], ["sheet_id", "INTEGER"], ["published_count", "INTEGER DEFAULT 0"], ["last_published_at", "TEXT"]] as const) {
   if (!linkCols.some((c) => c.name === col)) {
     db.exec(`ALTER TABLE links ADD COLUMN ${col} ${ddl}`);
   }
@@ -281,6 +288,18 @@ export function updateLinkImage(id: number, image_url: string): void {
     return;
   }
   db.prepare("UPDATE links SET image_url = ? WHERE id = ?").run(image_url, id);
+}
+
+export function markLinkPublished(id: number, postUrl?: string | null): void {
+  db.prepare(
+    `UPDATE links
+       SET published_count = published_count + 1,
+           last_published_at = datetime('now'),
+           published_at = datetime('now'),
+           published_url = COALESCE(?, published_url),
+           is_published = '1'
+     WHERE id = ?`
+  ).run(postUrl ?? null, id);
 }
 
 /**

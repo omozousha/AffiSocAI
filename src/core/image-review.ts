@@ -6,14 +6,14 @@
  *      answers: does this photo show {product}? YES/NO + one line.
  *   2. oc/jev-1.13-free via /v1/systemone approves from the mimo verdict +
  *      hard signals (backend, bytes, resolution) — numeric scores, no vibes.
- *   3. REJECT → variant file is KEPT (review UI later) but link.image_url is
+ *   3. REJECT -> variant file is KEPT (review UI later) but link.image_url is
  *      NOT touched: the post falls back to the sealed original photo.
  *
- * Same gateway + key as router-image.ts (router.realpaytrans.my.id).
+ * Same gateway + key as router-image.ts (router2nd.realpaytrans.my.id).
  * Zero deps. Both calls bounded (~30s total worst case).
  */
 
-const BASE = (process.env.AFFILIATE_ROUTER_BASE_URL || "https://router.realpaytrans.my.id/v1").replace(/\/+$/, "");
+const BASE = (process.env.AFFILIATE_ROUTER_BASE_URL || "https://router2nd.realpaytrans.my.id/v1").replace(/\/+$/, "");
 const VISION_MODEL = process.env.AFFILIATE_REVIEW_VISION_MODEL || "jj/mimo-v2.6-flash";
 const JUDGE_MODEL = "oc/jev-1.13-free";
 
@@ -30,7 +30,6 @@ export type ReviewVerdict = {
   jev_scores: Record<string, number>;
 };
 
-/** Ask mimo-vision: is this the product? Returns raw text. */
 async function mimoCheck(product: string, dataUri: string): Promise<string> {
   const body = {
     stream: false,
@@ -48,7 +47,7 @@ async function mimoCheck(product: string, dataUri: string): Promise<string> {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${apiKey()}` },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(90_000),
   });
   if (!res.ok) throw new Error(`vision HTTP ${res.status}`);
   const j = await res.json() as any;
@@ -56,7 +55,6 @@ async function mimoCheck(product: string, dataUri: string): Promise<string> {
   return (typeof t === "string" ? t : "").trim();
 }
 
-/** Ask JEV to score the creative from mimo's verdict + hard signals. */
 async function jevApprove(state: string): Promise<Record<string, number>> {
   const body = {
     model: JUDGE_MODEL,
@@ -70,7 +68,7 @@ async function jevApprove(state: string): Promise<Record<string, number>> {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${apiKey()}` },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(90_000),
   });
   if (!res.ok) throw new Error(`systemone HTTP ${res.status}`);
   const j = await res.json() as any;
@@ -88,10 +86,6 @@ function sniffMime(buf: Buffer): string {
   return "image/jpeg";
 }
 
-/**
- * Full gate. Never throws — on any infra failure returns approved:false with
- * reason so the caller falls back to the original photo, not a broken post.
- */
 export async function reviewCreative(
   product: string,
   bytes: Buffer,
@@ -99,12 +93,7 @@ export async function reviewCreative(
 ): Promise<ReviewVerdict> {
   const empty = { approved: false, reason: "", mimo_says: "", jev_scores: {} };
   try {
-    if (signals.backend === "router") {
-      return { approved: true, reason: "router-img2img-bypass", mimo_says: "", jev_scores: {} };
-    }
     const mime = sniffMime(bytes);
-    // Cap vision payload ~700KB (downscale not available stdlib-free; JPEG
-    // creatives here are ~200-700KB so this passes through untouched).
     if (bytes.length > 900_000) return { ...empty, reason: "oversize-for-vision" };
     const dataUri = `data:${mime};base64,${bytes.toString("base64")}`;
     const mimo = await mimoCheck(product, dataUri);

@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getProvider, listProviders } from "../core/registry.ts";
 import { composio } from "../core/composio.ts";
-import { addLink, addContent, listContent, listLinks, getLink, getLinkBySheetId, enrichLink, deleteLink, setContentStatus, answeredCommentIds, recordReply, listReplies } from "../core/store.ts";
+import { addLink, addContent, listContent, listLinks, getLink, getLinkBySheetId, enrichLink, deleteLink, setContentStatus, answeredCommentIds, recordReply, listReplies, markLinkPublished } from "../core/store.ts";
 import { buildTemplates, productName } from "../core/templates.ts";
 import { buildMysteryCaption, mysteryKind, MYSTERY_PLATFORMS, type MysteryDraft } from "../core/mystery-caption.ts";
 import { fetchOg, checkImageUrl } from "../core/shopee.ts";
@@ -832,22 +832,8 @@ const server = createServer(async (req, res) => {
       // Post the generated product image, not the raw Shopee CDN photo. A link
       // that never went through Recreate still points at susercontent — run it
       // now so every post carries the generated creative.
-      let media = absoluteImageUrl(link.image_url);
-      if (!media.startsWith("/api/images/") && !/^https?:\/\/affine\.realpaytrans\.my\.id\/api\/images\//.test(media)) {
-        const gen = await recreateProductImage(link);
-        // live=false: review rejected the creative (file kept for review UI,
-        // original photo stays). Use the sealed original, not the rejected file.
-        if (gen.ok && gen.live) media = absoluteImageUrl(gen.served_url);
-      }
-      // Threads renders bare URLs as tappable link cards; the mystery caption
-      // deliberately withholds the link ("cek di bio"), so append the short
-      // URL explicitly for this platform only.
-      let text = draft.body;
-      if (target.key === "threads" && link.short_url && !text.includes(link.short_url)) {
-        text = `${text}\n\n${link.short_url}`;
-      }
-      // Threads topic_tag: routes into the topic feed (screenshot composer
-      // "Community or topic" picker). Derived from the link's category.
+      const media = absoluteImageUrl(link.image_url);
+      const text = draft.body + (target.key === "threads" && link.short_url && !draft.body.includes(link.short_url) ? `\n\n${link.short_url}` : "");
       const { buildIdentity, detectType } = await import("../core/product-identity.ts");
       const { topicFor } = await import("../core/mystery-caption.ts");
       const topicTag = target.key === "threads"
@@ -859,6 +845,7 @@ const server = createServer(async (req, res) => {
       const row = addContent({ link_id: id, platform: target.key, kind: mysteryKind(media), body: text, media_url: media, first_comment: null });
       const pub = await target.p!.publish(content);
       if (pub.ok) {
+        markLinkPublished(id, pub.url ?? null);
         // Instagram returns a container id even when the media never goes
         // live — verify before claiming "published", or the DB lies.
         let finalStatus: "published" | "rejected" = "published";

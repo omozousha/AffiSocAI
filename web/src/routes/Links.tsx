@@ -387,7 +387,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
                     rel="noopener"
                     className="truncate text-sm font-medium hover:underline"
                   >
-                    {l.product || l.short_url}
+                    {l.product || l.kategori || l.short_url}
                   </a>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {l.kategori && <Badge variant="secondary">{l.kategori}</Badge>}
@@ -398,6 +398,9 @@ export default function Links({ go }: { go: (r: string) => void }) {
                     ) : (
                       <Badge variant="destructive">no img</Badge>
                     )}
+                    {(l as any).published_count ? (
+                      <Badge variant="outline">published{(l as any).published_count > 1 ? ` x${(l as any).published_count}` : ""}</Badge>
+                    ) : null}
                   </div>
                   {l.deskripsi && (
                     <p className="mt-1 truncate text-xs text-zinc-400">

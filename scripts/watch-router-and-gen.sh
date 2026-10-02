@@ -21,7 +21,7 @@ console.log("ref:", d.prepare("select image_url from links where id=3").get().im
 
 # 200 only when the route actually returns an image payload.
 probe() {
-  curl -s --max-time 90 -X POST "https://router.realpaytrans.my.id/v1/images/generations" \
+  curl -s --max-time 90 -X POST "${AFFILIATE_ROUTER_BASE_URL:-https://router2nd.realpaytrans.my.id/v1}/images/generations" \
     -H "content-type: application/json" -H "authorization: Bearer $KEY" \
     -d '{"model":"ag/gemini-3.8-flash","prompt":"red circle on white, no text","n":1}' \
     -o /tmp/watch-probe.json -w "%{http_code}"

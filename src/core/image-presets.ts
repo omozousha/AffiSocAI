@@ -39,6 +39,7 @@ const NEVER_RENDER = [
   "Do not render the retail packaging, box, carton, hang-tag or crate instead of the product — photograph the product itself",
   "Do not substitute a different model, variant or colour of the product",
   "No text, no watermark, no caption, no badge, no marketing overlay added by you",
+  "Do not mention or include any brand name, shop name, or product name in the image",
 ].join(". ");
 
 function identityFacts(productLabel: string): string {
@@ -52,7 +53,13 @@ function identityFacts(productLabel: string): string {
       "white italic COSMO logo on the lower side panel",
     ].join("; ");
   }
-  return "the product's exact design, colours, labels and printed text as shown in the reference image — nothing re-drawn, re-coloured or re-branded";
+  if (name.includes("tas") || name.includes("backpack") || name.includes("ransel")) {
+    return "The product is a bag/backpack — keep the main compartment shape, straps, zippers, and pocket layout exactly as in the reference image";
+  }
+  if (name.includes("sepatu") || name.includes("sneaker") || name.includes("shoes")) {
+    return "The product is footwear — keep the sole pattern, upper material, lacing, and silhouette exactly as in the reference image";
+  }
+  return "the product's exact design, colours, labels, printed text, proportions and materials as shown in the reference image — nothing re-drawn, re-coloured or re-branded";
 }
 
 const IDENTITY = [

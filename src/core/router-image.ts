@@ -1,5 +1,5 @@
 /**
- * Image generation via the 9router "router.realpaytrans.my.id" gateway.
+ * Image generation via the 9router "router2nd.realpaytrans.my.id" gateway.
  *
  * Two capabilities, both verified live:
  *
@@ -22,7 +22,7 @@
  *   AFFILIATE_ROUTER_KEY       (preferred)
  *   HERMES_CUSTOM_ROUTER_REALPAYTRANS_MY_ID_API_KEY  (the Hermes router key, fallback)
  * Base URL is overridable for tests:
- *   AFFILIATE_ROUTER_BASE_URL  (default https://router.realpaytrans.my.id/v1)
+ *   AFFILIATE_ROUTER_BASE_URL  (default https://router2nd.realpaytrans.my.id/v1)
  */
 
 export type GeneratedImage = {
@@ -31,7 +31,7 @@ export type GeneratedImage = {
   model: string;
 };
 
-const DEFAULT_BASE_URL = "https://router.realpaytrans.my.id/v1";
+const DEFAULT_BASE_URL = "https://router2nd.realpaytrans.my.id/v1";
 
 /**
  * Image models on the gateway, best first.

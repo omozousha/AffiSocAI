@@ -232,19 +232,19 @@ export function pickHook(id: ProductIdentity, publishIndex: number): HookVariant
 /** Prompt fragment for image regen — matches the product type. */
 export function imagePromptFor(id: ProductIdentity): string {
   const type = detectType(id);
-  const name = id.name || "this product";
+  const productTypeLabel = typeLabel(type);
   const prompts: Record<string, string> = {
-    helm: `Professional e-commerce product photograph of ${name}, half-face helmet on a pure white seamless background, soft directional lighting, clean drop shadow, 45-degree three-quarter angle showing shell curvature and visor detail. Keep product exactly as in reference — same shell, same visor colour, no invented details.`,
-    tas: `Professional e-commerce product photograph of ${name} on a light concrete studio surface with soft diffused shadow, slight overhead angle.`,
-    sepatu: `Professional e-commerce product photograph of ${name} on a seamless stone-grey background, laces visible, soft directional light, clean drop shadow.`,
-    gadget: `Professional e-commerce product photograph of ${name} on a matte grey seamless surface with subtle flat-lay composition, precise edge lighting, clean shadow, catalogue quality.`,
-    rumah: `Warm lifestyle product photograph of ${name} styled in a cozy modern bedroom, soft morning window light, lived-in but tidy bedding, shallow depth of field, catalogue quality.`,
-    fashion: `Fashion e-commerce product photograph of ${name} on a ghost mannequin against a light grey studio backdrop, soft diffused lighting, fabric texture crisp, catalogue quality.`,
-    skincare: `Clean beauty product photograph of ${name} on a glossy white podium with soft water-splash bokeh background, fresh dewy lighting, premium skincare-ad quality.`,
-    outdoor: `Rugged outdoor product photograph of ${name} on dark volcanic rock with blurred pine-forest background, dramatic natural light, adventure-catalogue quality.`,
-    mainan: `Cheerful product photograph of ${name} on a pastel-yellow seamless background with soft confetti bokeh, bright playful lighting, toy-catalogue quality.`,
-    olahraga: `Dynamic sports product photograph of ${name} on a dark charcoal gym backdrop with dramatic rim lighting, sense of motion, fitness-catalogue quality.`,
-    default: `Professional e-commerce product photograph of ${name} on a pure white seamless studio background, soft directional lighting and clean drop shadow. Keep the product exactly as in the reference — same design, colours and proportions.`,
+    helm: `Professional e-commerce product photograph of a full-face motorcycle helmet on a pure white seamless background, soft directional lighting, clean drop shadow, 45-degree three-quarter angle showing shell curvature and visor detail. Keep the product exactly as in the reference — same shell, same visor colour, no invented details.`,
+    tas: `Professional e-commerce product photograph of a bag/backpack on a light concrete studio surface with soft diffused shadow, slight overhead angle.`,
+    sepatu: `Professional e-commerce product photograph of footwear on a seamless stone-grey background, laces visible, soft directional light, clean drop shadow.`,
+    gadget: `Professional e-commerce product photograph of a small electronic gadget on a matte grey seamless surface with subtle flat-lay composition, precise edge lighting, clean shadow, catalogue quality.`,
+    rumah: `Warm lifestyle product photograph of a home item styled in a cozy modern bedroom, soft morning window light, lived-in but tidy bedding, shallow depth of field, catalogue quality.`,
+    fashion: `Fashion e-commerce product photograph of an outfit on a ghost mannequin against a light grey studio backdrop, soft diffused lighting, fabric texture crisp, catalogue quality.`,
+    skincare: `Clean beauty product photograph of a skincare product on a glossy white podium with soft water-splash bokeh background, fresh dewy lighting, premium skincare-ad quality.`,
+    outdoor: `Rugged outdoor product photograph of outdoor gear on dark volcanic rock with blurred pine-forest background, dramatic natural light, adventure-catalogue quality.`,
+    mainan: `Cheerful product photograph of a toy on a pastel-yellow seamless background with soft confetti bokeh, bright playful lighting, toy-catalogue quality.`,
+    olahraga: `Dynamic sports product photograph of sports gear on a dark charcoal gym backdrop with dramatic rim lighting, sense of motion, fitness-catalogue quality.`,
+    default: `Professional e-commerce product photograph of ${productTypeLabel} on a pure white seamless studio background, soft directional lighting and clean drop shadow. Keep the product exactly as in the reference — same design, colours and proportions.`,
   };
   return prompts[type] || prompts.default!;
 }

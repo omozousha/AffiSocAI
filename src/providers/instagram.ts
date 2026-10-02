@@ -146,7 +146,7 @@ export class InstagramAdapter implements SocialProvider {
     const pub = await composio.execute("INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH", {
       ig_user_id: IG_ID,
       creation_id: String(creationId),
-      max_wait_seconds: 120,
+      max_wait_seconds: 60,
       poll_interval_seconds: 3,
     });
     return this.wrap(pub);
