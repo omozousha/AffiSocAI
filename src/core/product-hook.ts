@@ -1,19 +1,23 @@
 /**
- * Hook library — product-aware hooks that vary the opening line of a post.
+ * Hook library — product-aware hooks that vary the opening of a post.
  *
  * Rules:
- *   1. Never name the product (mystery = soft sell).
- *   2. Each slot gets a different hook — no consecutive duplicates.
- *   3. Hooks reference the *type* of product, not a claim about it.
+ *   1. Never name the product, brand, or shop. Mystery = soft sell.
+ *      (The old {{shop}} slot leaked the store slug into published captions —
+ *      removed for good; do not reintroduce any shop/brand placeholder.)
+ *   2. Each slot gets a different hook — rotate on publishIndex.
+ *   3. `why` is short, genuinely useful education for the category — a real
+ *      general fact or selection principle, never a claim about THIS product.
+ *   4. `cta` speaks to a community ("tag the friend who…"), link stays in bio.
  */
 
 import type { ProductIdentity } from "./product-identity.ts";
 import { detectType, typeLabel } from "./product-identity.ts";
 
 export type HookVariant = {
-  open: string;  // paragraph 1
-  why: string;   // paragraph 2 (the "what makes it interesting" line)
-  cta: string;   // paragraph before bio
+  open: string;  // paragraph 1 — scroll-stopping hook
+  why: string;   // paragraph 2 — educational storytelling, per category
+  cta: string;   // paragraph 3 — community call, no inline link
 };
 
 type HooksByType = Record<string, HookVariant[]>;
@@ -21,189 +25,189 @@ type HooksByType = Record<string, HookVariant[]>;
 const HOOKS: HooksByType = {
   helm: [
     {
-      open: "Helm yang satu ini bikin feed berhenti sendiri — warna doff-nya nggak pasaran.",
-      why: "Setiap sudutnya kelihatan effort, dari helm hingga kaca yang match di foto.",
-      cta: "Masuk toko langsung kebayang pakai di jalan. Kira-kira serasi buat motor kamu? Cek bio.",
+      open: "Sebelum ganti helm, baca ini dulu — 2 detik yang bisa nyelametin kepala kamu. 🪖",
+      why: "Helm yang melindungi itu yang ngiket kepala pas goyang, bukan yang kendor biar nggak rusak rambut. Busa pipi yang nahan pipi = ukuran pas; pastiin sertifikasi tercetak di shell, bukan tempelan. Dan ganti tiap ±5 tahun — busa yang pernah kena bentrok nggak pernah sama lagi, walau looks-nya masih mulus.",
+      cta: "Tag temen rider yang helmnya masih kendor — semahal apa pun helm lama, kepala cuma satu. Yang lagi incer kandidat baru, detailnya di bio.",
     },
     {
-      open: "Baru lewat helm di {{shop}} yang nggak kelihatan biasa di jalan.",
-      why: "Warna hitam doff dan kaca hitam bikin look monolit — beda sama yang glossy rame di pasaran.",
-      cta: "Yang cari helm anti-mainstream, ini titik temu. Detail harga dan varian di bio.",
+      open: "Yang pakai half-face sering salah di satu titik ini. 👀",
+      why: "Half-face cuma lindungin atas — jadi kaca dan fitting jadi segalanya. Cek jarak pandang kaca pas dipakai, dan pastiin busa dalam nggak naik ke alis. Rider yang sering berhenti mendadak wajib ngerasain sendiri pas fitting, bukan percaya review doang.",
+      cta: "Komunitas rider, waktunya ngobrol: sharing cara fitting versi kalian di komentar. Candidate yang lagi kulirik ada di bio.",
     },
     {
-      open: "Scroll terus sampai helm ini nahan jari. Ngeliat sekali, kebayang terus.",
-      why: "Desain shell half-face-nya ramping, kaca tegas — outfit rider langsung naik kelas.",
-      cta: "Penasaran seberapa paket hemat? Link lengkap ada di bio.",
+      open: "Satu hal soal helm yang jarang diceritain sebelum beli. 🤫",
+      why: "Harga nggak njamin keamanan — fitting yang njamin. Cek 10 detik: pakai, goyangin kepala kiri-kanan; kalau helm yang geser duluan sebelum kulit wajah, itu kebesaran. Helm bekas jatuh walau cuma baret kecil sudah selesai tugasnya.",
+      cta: "Tag teman yang mau beli helm bulan ini biar nggak salah ukuran. Referensinya ada di bio.",
     },
   ],
   gadget: [
     {
-      open: "Gadget kecil ini jawabannya buat yang meja kerjanya kabel ke mana-mana.",
-      why: "Ukurannya ringkas tapi fungsinya nempel terus tiap hari — sekali pakai susah balik ke cara lama.",
-      cta: "Yang setup-nya masih berantakan, cek bio sebelum kehabisan varian warna.",
+      open: "Gadget kecil ini yang bikin meja kerja berubah nasib — tapi satu kesalahan bikin orang kecewa. ⚡",
+      why: "Sebelum beli aksesoris elektronik cocokin 2 hal: jenis port (USB-A vs C, berapa watt) dan daya yang nyediain butuh. Charger lambat dan panas berlebih biasanya bukan salah device-nya — adaptor-nya nggak sefrekuensi. Baca spesifikasi, bukan cuma foto produk.",
+      cta: "Tim setup meja rapi, kumpul — share masalah kabel kalian di komentar. Penasarannya sudah naik? Link di bio.",
     },
     {
-      open: "Kenapa nggak ada yang kasih tahu gadget ini dari dulu? ⌁",
-      why: "Detail build-nya rapi, nyolok ke HP langsung jalan, nggak perlu setting aneh-aneh.",
-      cta: "Tebak fungsinya di komentar. Link + harga ada di bio.",
+      open: "Kenapa gadget sekecil ini bikin produktivitas naik diam-diam? 🧠",
+      why: "Karena dia ngilangin friksi kecil: nyolok, langsung kepakai, tanpa ritual. Prinsipnya — perangkat yang butuh driver atau manual dulu sebelum kepakai biasanya mati di laci dalam sebulan. Cari yang jalan tanpa syarat.",
+      cta: "Tag teman yang setup-nya masih semrawut. Detailnya sudah nunggu di bio.",
     },
     {
-      open: "POV: meja kamu rapi dalam 2 menit gara-gara satu barang ini.",
-      why: "Bentuknya minimalis, warnanya masuk ke semua setup — foto produknya jujur, bukan render.",
-      cta: "Simpen dulu postingan ini, link-nya di bio kalau nanti butuh.",
+      open: "Jangan checkout dulu sebelum tahu satu ciri ini di gadget tipe gini. ⚠️",
+      why: "Versi tiruan biasanya cuma niru bentuk luar. Pembedanya: bobot (komponen asli lebih padat), kerapian sambungan, dan garansi toko yang jelas. Foto produk yang nunjukin detail sambungan biasanya lebih jujur daripada render.",
+      cta: "Komunitas yang suka ngulik, diskusi di komentar: ciri fisik apa yang kalian cek duluan? Link di bio.",
     },
   ],
   rumah: [
     {
-      open: "Satu barang rumah yang bikin tamu nanya 'beli di mana?' 🤫",
-      why: "Bentuk dan warnanya beda dari yang biasa beredar — taruh di kamar langsung naik kelas.",
-      cta: "Biar nggak salah harga, cek link di bio sebelum variannya habis.",
+      open: "Satu perubahan kecil di kamar yang efeknya nggak masuk akal. 🏠",
+      why: "Kamar rapi itu bukan soal luas — tapi one-in-one-out: tiap barang baru masuk, satu keluar. Barang 'nanti juga kepakai' adalah sumber debu nomor satu. Mulai dari satu permukaan meja yang bersih — otak langsung terasa lega.",
+      cta: "Tag teman yang kamarnya jadi gudang diam-diam. Yang mau mulai beres-beres aesthetic, link di bio.",
     },
     {
-      open: "Kamar kos auto aesthetic cuma gara-gara ganti satu ini.",
-      why: "Detail finishing-nya rapi, ukurannya pas buat kamar sempit maupun luas.",
-      cta: "Yang lagi upgrade kamar, link lengkap ada di bio.",
+      open: "Barang rumah yang kelihatannya sepele ini yang bikin tamu nanya duluan. 🤫",
+      why: "Prinsip dekor: satu objek fokus per sudut, jangan tiga. Warna netral plus satu tekstur unik kelihatannya lebih mahal daripada banyak corak ditumpuk. Lighting hangat sore hari nyelesaiin sisanya.",
+      cta: "Kaum anak kos aesthetic, share sudut favorit kamar kalian di komentar. Detail barangnya di bio.",
     },
     {
-      open: "Ibu-ibu PKK komplek sebelah sudah punya duluan, kamu kapan?",
-      why: "Fungsinya kepakai tiap hari, bukan pajangan — sekali coba langsung paham kenapa laris.",
-      cta: "Cek bio buat harga dan varian. Jangan tanya harga di komentar ya.",
+      open: "Kenapa barang rumah cepat rusak? Sering cuma karena dua hal. 🔧",
+      why: "Kelembapan dan sinar matahari langsung — dua-duanya nyiksa material. Simpen yang sensitif jauh dari jendela, lap setelah kena air walau cuma sedikit. Barang yang dipelihara 30 detik per hari umurnya panjang berlipat.",
+      cta: "Tag yang rajin beli baru tapi nggak rawat. Yang mau cek detail, link di bio.",
     },
   ],
   fashion: [
     {
-      open: "Outfit yang satu ini bikin OOTD auto beda dari kebanyakan orang. ✨",
-      why: "Potongan dan warnanya statement tapi gampang di-mix — sekali lihat langsung kebayang pakai jalan.",
-      cta: "Size lari terus, cek bio buat size chart + harga.",
+      open: "Outfit ini nggak aku sebut namanya — tapi potongannya ngomong sendiri. ✨",
+      why: "Rahasia outfit kelihatan mahal bukan harga: warna netral gampang di-mix, bahan adem bikin sering kepakai, dan ukuran pas badan ngalahin brand apa pun. Beli karena bakal kepakai 5x, bukan karena viral seminggu.",
+      cta: "Tag OOTD squad kamu buat tebak ini cocok buat acara apa. Size dan detail di bio.",
     },
     {
-      open: "Nemu hidden gem fashion di {{shop}} — harganya nggak masuk akal buat kualitas segini.",
-      why: "Jahitannya rapi, bahannya kelihatan adem, foto produknya jujur bukan mockup.",
-      cta: "Tebak ini apa di komentar. Link ada di bio.",
+      open: "Tahan dulu 7 hari sebelum beli outfit viral — baca ini. 👀",
+      why: "Tes sederhana sebelum checkout fashion: punya minimal 2 kombinasi dari lemari yang sudah ada buat item ini? Kalau nggak, dia bakal join kolektif 'dibeli mikir dua kali, dipakai sekali'. Warna statement sesekali boleh, fondasi lemari tetap yang netral.",
+      cta: "Komunitas anti-galat-beli, ngobrol di komentar: kombinasi apa yang kalian bikin? Link di bio.",
     },
     {
-      open: "Stop beli outfit pasaran. Yang ini belum banyak yang punya. 👀",
-      why: "Desainnya clean, warnanya statement — dipakai nongkrong langsung jadi pusat perhatian.",
-      cta: "Simpen postingan ini, link-nya di bio kalau nanti butuh.",
+      open: "Satu item yang bikin semua outfit di lemari tiba-tiba nyambung. 🧩",
+      why: "Itu kerja potongan timeless: garis bersih, warna gampang di-mix, bahan yang jatuh rapi. Kualitas jahitan kelihatan dari bagian dalam — foto detail yang rapi biasanya bukan kebetulan.",
+      cta: "Tag teman yang lemarinya penuh tapi nggak ada yang kepakai. Detail di bio.",
     },
   ],
   skincare: [
     {
-      open: "Skincare yang lagi rame dibahas di FYP — aku coba cari tahu kenapa. 🔍",
-      why: "Kemasannya meyakinkan, klaim bahannya fokus ke masalah kulit yang paling sering dikeluhin.",
-      cta: "Pastinya cek dulu cocok buat tipe kulitmu — link + detail di bio.",
+      open: "Sebelum skincare-an makin rame, betulin dulu fondasi ini. 🔬",
+      why: "Urutan layering itu dari tekstur paling cair ke paling kental — salah urutan, yang mahal nggak nyerep. Dan step pagi yang paling ngefek buat jangka panjang bukan serum: itu sunscreen. Mayoritas tanda penuaan dini datang dari UV, bukan umur.",
+      cta: "Tag bestie skincare kamu buat cek rutinitasnya udah bener apa belum. Kandidat yang lagi dilirik ada di bio.",
     },
     {
-      open: "POV: skin barrier kamu membaik cuma gara-gara ganti satu step ini.",
-      why: "Teksturnya kelihatan ringan, gampang layering sama skincare lain.",
-      cta: "Yang penasaran sama ingredients-nya, link lengkap di bio.",
+      open: "Skin barrier rusak vs breakout — beda penyakit, beda solusi. ⚠️",
+      why: "Perih setelah pakai produk itu sinyal barrier, bukan 'lagi detoks'. Kalau begitu: stop bahan aktif yang keras, balik ke cleanser lembut + moisturizer + sunscreen sampai tenang. Bahan aktif itu penambah, bukan pengganti fondasi.",
+      cta: "Komunitas kulit sensitif, sharing pengalaman kalian di komentar. Gentle pick-nya di bio.",
     },
     {
-      open: "Jangan beli skincare viral sebelum lihat yang satu ini dulu. ⚠️",
-      why: "Bandingin kemasan dan klaimnya sama yang beredar — bedanya kelihatan di detail.",
-      cta: "Cek bio buat harga dan varian ukuran.",
+      open: "Skincare viral belum tentu bener — yang ini bikin nanya duluan. 🔍",
+      why: "Cara baca produk 10 detik: klaim didukung nama bahan (bukan cuma kata 'glowing'), terdaftar di badan pengawas, dan daftar INCI-nya masuk akal buat harga segitu. Kemasan rapi bukan jaminan isi rapi.",
+      cta: "Tag yang gampang tergiur FYP beauty. Mau cek detail? Link di bio.",
     },
   ],
   sepatu: [
     {
-      open: "Sepatu yang bikin langkah berasa beda dari pertama pakai. 👟",
-      why: "Siluetnya clean, warnanya gampang masuk ke semua outfit — difoto dari angle mana pun masuk.",
-      cta: "Size lari terus, cek bio buat size chart.",
+      open: "Rahasia sepatu awet 2-3x lebih lama yang jarang dikasih tahu. 👟",
+      why: "Kuncinya rotasi, bukan harga: jangan pakai sepatu yang sama dua hari berturut-turut — busa butuh sekitar 24 jam buat balik bentuk. Hindari panas langsung (sol getas), dan buat musim hujan sol tahan aus lebih penting daripada looks.",
+      cta: "Tag yang koleksi sepatunya cuma satu pasang. Kandidat berikutnya nunggu di bio.",
     },
     {
-      open: "Sneakers di {{shop}} ini underrated parah — belum banyak yang tahu.",
-      why: "Detail sol dan talinya rapi, dipakai harian nyaman dilihat maupun dipakai.",
-      cta: "Link + harga ada di bio. Simpen dulu biar nggak lupa.",
+      open: "Sepatu ini gampang banget di-mix — dan itu bukan kebetulan. 🎨",
+      why: "Warna netral plus siluet clean bikin satu sepatu nyambung ke kampus, nongkrong, sampai semi-formal. Prinsip beli: pilih yang paling gampang dipaduin sama lemari kamu yang sudah ada, bukan yang paling ramai di feed orang.",
+      cta: "Share kombinasi ala kalian di komentar, komunitas step rapi. Detail ukuran di bio.",
     },
     {
-      open: "Satu sepatu, tiga gaya: kampus, nongkrong, kondangan — semua masuk.",
-      why: "Warnanya netral tapi nggak ngebosenin, potongannya timeless.",
-      cta: "Tebak harganya di komentar. Jawabannya di bio.",
+      open: "Ukuran sepatu online selalu jadi drama — ini cara nutup dramanya. 📏",
+      why: "Ukur kaki sore hari (kaki ngebesar sepanjang hari), sisain ibu jari 0,5–1 cm di ujung, dan pakai tabel sentimeter toko — bukan nama size-nya. Salah size itu bukan dosa, tapi drama yang bisa dicegah 30 detik.",
+      cta: "Tag teman yang selalu salah size online. Size chart-nya sudah nunggu di bio.",
     },
   ],
   tas: [
     {
-      open: "Tas yang muat banyak tapi tetap kelihatan ramping. 👜",
-      why: "Kompartemennya mikir banget — dompet, HP, powerbank, semua ada tempatnya.",
-      cta: "Yang tasnya sudah jebol resleting, link pengganti ada di bio.",
+      open: "Tas kamu cepat rusak bisa jadi bukan karena kualitas — tapi cara pakai. 👜",
+      why: "Beban ideal di bahu itu ringan dan merata; satu pundak terus-terusan bikin badan nyari kompensasi dan bahu yang bayar. Barang berat paling dekat punggung, dan resleting yang dipaksa muat adalah pembunuh nomor satu.",
+      cta: "Tag yang tasnya selalu jebol di resleting. Kandidat gantinya ada di bio.",
     },
     {
-      open: "Nemu tas di {{shop}} yang harganya nggak masuk akal buat kerapian segini.",
-      why: "Jahitan dan resletingnya kelihatan kokoh, talinya bisa diatur panjang-pendek.",
-      cta: "Cek bio buat warna dan harga. Varian favorit cepat habis.",
+      open: "Kompartemen tas ini yang bikin isinya nggak jadi dasar laut. 🌊",
+      why: "Prinsip pack: berat di dekat punggung, yang sering dikeluarin di saku luar. Satu pouch kecil buat charger dan benda receh lebih ngirit waktu nyari barang daripada tas ukuran apa pun. Tas rapi itu hasil sistem, bukan ukuran.",
+      cta: "Kaum EDC, share isi tas kalian di komentar. Yang mau upgrade carrier, link di bio.",
     },
     {
-      open: "Tas kerja yang nggak bikin bahu pegal + tetap stylish — emang ada?",
-      why: "Bentuknya profesional tapi nggak kaku, muat laptop tanpa kelihatan gembung.",
-      cta: "Simpen postingan ini, link-nya di bio.",
+      open: "Satu tas buat kerja, kuliah, dan akhir pekan — emang bisa? 🎒",
+      why: "Bisa kalau bentuknya nggak teriak 'komuter' dan warnanya netral. Cek tiga hal: muat laptop plus sekatnya? Jahitan di titik beban dobel? Ada saku samping buat botol? Itu yang misahin tas 2-tahun dan tas 5-tahun.",
+      cta: "Tag teman yang tas kerjanya masih tas bungkusan paket. Detail di bio.",
     },
   ],
   outdoor: [
     {
-      open: "Gear outdoor yang bikin pendakian pertama berasa kayak yang kesepuluh. 🏕️",
-      why: "Ringan, ringkas, fungsinya kepakai tiap jam di jalur — bukan gear pajangan.",
-      cta: "Musim pendakian segera mulai, cek bio sebelum stok menipis.",
+      open: "Yang bikin kedinginan di gunung biasanya bukan soal jaket tipis. 🏔️",
+      why: "Prinsip 3 layer: base buang keringat, mid nahan panas, outer tahan angin+hujan. Katun nempel basah dan nyedot panas badan — musuh nomor satu. Kaus kaki ganti di tengah hari lebih ngefek daripada sepatu mahal.",
+      cta: "Komunitas pendaki, share setup layering kalian di komentar. Gear yang lagi diincer ada di bio.",
     },
     {
-      open: "Jangan naik gunung sebelum punya yang satu ini. Serius. ⛰️",
-      why: "Detail materialnya kelihatan tangguh, lipatannya kecil gampang masuk carrier.",
-      cta: "Link + spek lengkap ada di bio.",
+      open: "Gear receh yang bikin pendakian pertama kerasa seperti yang kesepuluh. ⛺",
+      why: "Nyaman di jalur sering datang dari barang kecil: headlamp dengan mode redup, matras yang nahan angin bawah, dry-bag buat elektronik. Tiap 100 gram di carrier berasa di kilometer jauh — tapi kenyamanan 100 gram berasa di jam pertama.",
+      cta: "Tag kelompok gunung kalian yang masih nekat naik tanpa prepare. Detail di bio.",
     },
     {
-      open: "Camping auto nyaman cuma gara-gara upgrade satu gear ini.",
-      why: "Yang pernah kedinginan di tenda pasti paham kenapa barang ini wajib.",
-      cta: "Tebak fungsinya di komentar. Jawaban + link di bio.",
+      open: "Kesalahan gear paling mahal yang sering aku lihat di jalur. 🔥",
+      why: "Memakai sesuatu yang belum pernah diuji di rumah. Semua material butuh break-in — trek pertama bukan tempat eksperimen. Coba dulu, jalan 30 menit di rumah, rasain titik geseknya sebelum bawa belasan kilo.",
+      cta: "Pendaki lama, tambahin pelajaran mahal kalian di komentar. Yang baru mulai, cek bio.",
     },
   ],
   mainan: [
     {
-      open: "Mainan yang bikin anak lupa HP seharian. Para orang tua wajib lihat. 🧸",
-      why: "Warnanya cerah, bentuknya ngajak eksplor — bukan mainan yang sehari langsung bosen.",
-      cta: "Cek bio buat harga dan varian umur.",
+      open: "Mainan yang bikin anak lupa HP seharian — dan otaknya tetep jalan. 🧸",
+      why: "Mainan terbuka (bongkar-pasang, konstruksi) umurnya panjang karena anak bikin aturannya sendiri; mainan satu fungsi cepet bosen. Tandanya mainan bagus: anak fokus 15–20 menit tanpa disuapin. Buat usia kecil: bahan tebal, sudut tumpul.",
+      cta: "Orang tua, share mainan paling awet di rumah kalian di komentar. Referensinya di bio.",
     },
     {
-      open: "Kado ultah anak yang anti gagal — bungkusnya belum dibuka sudah heboh. 🎁",
-      why: "Detailnya lucu, bahannya kelihatan aman buat anak.",
-      cta: "Link ada di bio. Simpen buat nanti pas butuh kado dadakan.",
+      open: "Kado anak yang nggak asal heboh — ada rumusnya. 🎁",
+      why: "Rumus kado anti-gagal: sesuai usia + bisa dieksplor anak sendiri (bukan cuma nyala-nyala). Satu mainan besar lebih diingat daripada tiga kecil. Ragu usianya? Ambil satu tingkat di atas — masih kepakai sekarang, tumbuh bareng nanti.",
+      cta: "Tag teman yang butuh kado weekend ini. Varian umur dan detail di bio.",
     },
     {
-      open: "Mainan edukatif yang anaknya senang, orang tuanya tenang. 📚",
-      why: "Sambil main sambil belajar — konsepnya cerdas, eksekusinya rapi.",
-      cta: "Tebak ini apa di komentar sama anak. Link di bio.",
+      open: "Sambil main sambil belajar itu bukan sekadar klaim — ini cara kerjanya. 📚",
+      why: "Mainan edukatif bekerja kalau anak harus mikir buat menang, bukan asal pencet. Puzzle, balok, dan board game sederhana ngajarin sebab-akibat dan kesabaran yang nggak diajarin game layar. Bonus: orang tua ikut main — itu bagian 'edukatif' yang asli.",
+      cta: "Komunitas parent, board game apa yang paling sering keluar di rumah? Link di bio.",
     },
   ],
   olahraga: [
     {
-      open: "Gear olahraga yang bikin alasan 'mager' makin tipis. 💪",
-      why: "Ringan, praktis, hasilnya kerasa — sekali rutin susah berhenti.",
-      cta: "Resolusi sehat mulai dari sini. Link di bio.",
+      open: "Alat ini bukan alasan buat males — ini penghapus alasan. 💪",
+      why: "Progres itu volume naik bertahap, bukan semangat hari pertama. Teknik yang salah nggak ditambal alat mahal — mulai ringan dulu, catat progres. Dan istirahat itu bagian program: otot tumbuh pas tidur, bukan pas angkat.",
+      cta: "Tag partner gym-kamar kamu yang mager. Mau mulai dari sini? Link di bio.",
     },
     {
-      open: "Workout di rumah berasa punya PT pribadi gara-gara satu alat ini. 🏠",
-      why: "Ukurannya compact buat kamar kos, fungsinya setara alat gym besar.",
-      cta: "Cek bio buat harga dan cara pakai.",
+      open: "Workout di kamar kos bisa kerasa seperti di gym — dengan satu penyesuaian. 🏠",
+      why: "Kuncinya bukan berat alat tapi tempo: gerakan pelan (±3 detik turun) ngasih stimulus yang biasanya butuh beban besar. Matras 6–8 mm cukup buat lutut dan tetangga bawah — mulai dari sana sebelum nambah alat apa pun.",
+      cta: "Tim home workout, share rutinitas favorit di komentar. Alasnya ada di bio.",
     },
     {
-      open: "Atlet amatir vs yang niat — bedanya sering cuma di gear-nya. 🏃",
-      why: "Materialnya kelihatan awet, dipakai intensif tetap nyaman.",
-      cta: "Simpen postingan ini, link-nya di bio kalau nanti butuh.",
+      open: "Cedera olahraga amatir hampir selalu karena hal yang sama. 🏃",
+      why: "Naik intensitas sebelum badan siap — lompat duluan, teknik belum. Panasin sendi, naik pelan, dan bedain nyeri tajam dari pegal biasa. Alat yang pas bikin konsisten lebih gampang dipertahanin daripada motivasi apa pun.",
+      cta: "Tag teman yang baru mulai tapi udah ngebut. Perlengkapannya nunggu di bio.",
     },
   ],
   default: [
     {
-      open: "Ngga aku sebut namanya, kalau penasaran cek di bio.",
-      why: "Yang bikin menarik: bentuk dan warnanya beda dari yang biasa beredar. Detail pas di foto.",
-      cta: "Biar nggak salah harga, langsung cek link di bio sebelum kepencar.",
-    },
-    {
-      open: "Satu barang bikin berhenti scroll — bukan karena promo besar, tapi karena kelihatan benar-benar beda.",
-      why: "Garis desainnya clean, warnanya statement, langsung kebayang dipakai sehari-hari.",
+      open: "Nggak aku sebut namanya — tapi yang satu ini bikin berhenti scroll. 🤫",
+      why: "Barang yang paling layak direkomendasiin biasanya yang ngeberesin masalah harian kecil: yang selama ini kamu tahan-tahan padahal ada jalan lebih simpel. Kalau pernah mikir 'kok belum ada yang bikin begini ya' — biasanya emang belum.",
       cta: "Tebak ini apa di komentar. Link harga dan varian ada di bio.",
     },
     {
-      open: "Nemu satu yang kayanya bakal sering lewat di FYP. Simpen dulu, kali aja kamu cari juga.",
-      why: "Detail finishing-nya rapi, foto produknya jujur — bukan render, bukan mockup.",
-      cta: "Yang mau cek langsung, link ada di bio. Jangan tanya harga di komentar ya.",
+      open: "Barang yang kelihatan biasa tapi nyesel kalau nggak keburu ambil. 👀",
+      why: "Tips checkout online aman: cek review dengan foto (bukan bintang doang), perhatikan detail di foto dekat, dan simpen video unboxing. Harga bagus yang bikin tenang itu yang penjualnya transparan.",
+      cta: "Tag teman yang keranjangnya selalu nanggung. Detailnya sudah nunggu di bio.",
+    },
+    {
+      open: "Satu temuan yang bakal sering lewat di FYP kamu, kalau aku nggak salah. 🔥",
+      why: "Barang layak disimpen itu yang fungsinya kepakai mingguan, fotonya jujur, dan dia nyelesaiin satu hal spesifik. Simpen postingan ini dulu — stok varian nggak nunggu kamu siap.",
+      cta: "Yang udah ngerasa butuh, link lengkap ada di bio. Jangan tanya harga di komentar ya.",
     },
   ],
 };
@@ -218,15 +222,10 @@ const HOOKS: HooksByType = {
 export function pickHook(id: ProductIdentity, publishIndex: number): HookVariant {
   const type = detectType(id);
   const pool = HOOKS[type] ?? HOOKS.default;
-  const idx = publishIndex % pool.length;
-  const h = pool[idx]!;
-  const shop = id.shop.replace(/[._-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const h = pool[publishIndex % pool.length]!;
   const clue = typeLabel(type);
-  return {
-    open: h.open.replace(/\{\{shop\}\}/g, shop).replace(/\{\{clue\}\}/g, clue),
-    why: h.why.replace(/\{\{shop\}\}/g, shop).replace(/\{\{clue\}\}/g, clue),
-    cta: h.cta.replace(/\{\{shop\}\}/g, shop).replace(/\{\{clue\}\}/g, clue),
-  };
+  const fill = (s: string) => s.replace(/\{\{clue\}\}/g, clue);
+  return { open: fill(h.open), why: fill(h.why), cta: fill(h.cta) };
 }
 
 /** Prompt fragment for image regen — matches the product type. */

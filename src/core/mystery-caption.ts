@@ -16,7 +16,7 @@
 import type { ContentRow } from "./store.ts";
 import type { LinkInfo } from "./templates.ts";
 import { buildIdentity, detectType } from "./product-identity.ts";
-import { pickHook } from "./product-hook.ts";
+import { pickHook, type HookVariant } from "./product-hook.ts";
 
 export type MysteryDraft = {
   platform: "instagram" | "facebook" | "x" | "threads";
@@ -47,12 +47,6 @@ export function categoryClue(kategori: string | null | undefined): string {
   return "barang";
 }
 
-function shopLabel(link: LinkInfo): string {
-  if (!link.shop) return "toko ini";
-  const clean = link.shop.replace(/[._-]+/g, " ").trim();
-  return clean.replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 const CHAR_LIMIT: Record<MysteryDraft["platform"], number> = {
   x: 500,
   instagram: 2200,
@@ -60,7 +54,7 @@ const CHAR_LIMIT: Record<MysteryDraft["platform"], number> = {
   threads: 500,
 };
 
-function igMystery(shop: string, hook: ReturnType<typeof pickHook>): string {
+function igMystery(hook: HookVariant, tags: string[]): string {
   return [
     hook.open,
     "",
@@ -70,41 +64,40 @@ function igMystery(shop: string, hook: ReturnType<typeof pickHook>): string {
     "",
     BIO_LINE,
     "",
-    "#rekomendasi #linkdiobio #belanjahemat #fyp #affiliate",
-  ]
-    .join("\n")
-    .replace(/{{shop}}/g, shop);
+    tags.join(" "),
+  ].join("\n");
 }
 
-function fbMystery(shop: string, hook: ReturnType<typeof pickHook>): string {
+function fbMystery(hook: HookVariant, tags: string[]): string {
   return [
     hook.open,
     "",
-    "Yang bikin keren: bentuk dan warnanya beda dari yang biasa beredar. Detail pas di foto.",
-    "",
-    "Kalau kamu orangnya suka yang sedikit beda dari yang lain, ini layak dilihat.",
+    hook.why,
     "",
     hook.cta,
-  ]
-    .join("\n")
-    .replace(/{{shop}}/g, shop);
+    "",
+    BIO_LINE,
+    "",
+    tags.join(" "),
+  ].join("\n");
 }
 
 const TAGS: Record<string, string[]> = {
-  helm: ["#helm", "#helmetlovers", "#rider", "#otomotif", "#fyp"],
-  gadget: ["#gadget", "#tech", "#setup", "#rekomendasi", "#fyp"],
-  rumah: ["#rumah", "#homedecor", "#kamaraesthetic", "#rekomendasi", "#fyp"],
-  fashion: ["#ootd", "#fashion", "#outfit", "#rekomendasi", "#fyp"],
-  skincare: ["#skincare", "#beauty", "#glowup", "#rekomendasi", "#fyp"],
-  sepatu: ["#sneakers", "#sepatu", "#ootd", "#rekomendasi", "#fyp"],
-  tas: ["#tas", "#bag", "#fashion", "#rekomendasi", "#fyp"],
-  outdoor: ["#outdoor", "#camping", "#hiking", "#pendaki", "#fyp"],
-  mainan: ["#mainan", "#toys", "#parenting", "#rekomendasi", "#fyp"],
-  olahraga: ["#olahraga", "#fitness", "#gym", "#sehat", "#fyp"],
+  helm: ["#helm", "#helmetlovers", "#rider", "#otomotif", "#linkdiobio"],
+  gadget: ["#gadget", "#tech", "#setup", "#rekomendasi", "#linkdiobio"],
+  rumah: ["#rumah", "#homedecor", "#kamaraesthetic", "#rekomendasi", "#linkdiobio"],
+  fashion: ["#ootd", "#fashion", "#outfit", "#rekomendasi", "#linkdiobio"],
+  skincare: ["#skincare", "#beauty", "#glowup", "#rekomendasi", "#linkdiobio"],
+  sepatu: ["#sneakers", "#sepatu", "#ootd", "#rekomendasi", "#linkdiobio"],
+  tas: ["#tas", "#bag", "#fashion", "#rekomendasi", "#linkdiobio"],
+  outdoor: ["#outdoor", "#camping", "#hiking", "#pendaki", "#linkdiobio"],
+  mainan: ["#mainan", "#toys", "#parenting", "#rekomendasi", "#linkdiobio"],
+  olahraga: ["#olahraga", "#fitness", "#gym", "#sehat", "#linkdiobio"],
 };
 
 export function tagsFor(type: string): string[] {
-  return TAGS[type] ?? ["#rekomendasi", "#linkdiobio", "#belanjahemat", "#fyp", "#affiliate"];
+  const base = TAGS[type] ?? ["#rekomendasi", "#belanjahemat", "#fyp", "#linkdiobio"];
+  return base.includes("#linkdiobio") ? base : [...base, "#linkdiobio"];
 }
 
 /**
@@ -130,8 +123,8 @@ export function topicFor(type: string): string | null {
   return m[type] ?? null;
 }
 
-function threadsMystery(shop: string, hook: ReturnType<typeof pickHook>): string {
-  return hook.open.replace(/{{shop}}/g, shop);
+function threadsMystery(hook: HookVariant): string {
+  return hook.open;
 }
 
 export function buildMysteryCaption(
@@ -139,14 +132,14 @@ export function buildMysteryCaption(
   link: LinkInfo,
   publishIndex: number = 0,
 ): MysteryDraft {
-  const shop = shopLabel(link);
   const identity = buildIdentity({
     product: (link.product ?? null),
     kategori: (link as { kategori?: string | null }).kategori ?? null,
     shop: (link.shop ?? null),
   });
   const hook = pickHook(identity, publishIndex);
-  const tags = tagsFor(detectType(identity));
+  const type = detectType(identity);
+  const tags = tagsFor(type);
   const constraints: string[] = [];
 
   let body = "";
@@ -156,15 +149,18 @@ export function buildMysteryCaption(
   if (platform === "threads") {
     // Topic goes via the API topic_tag param (official publish), never as
     // caption text — the composer's topic picker is metadata, not words.
-    topic = topicFor(detectType(identity));
+    topic = topicFor(type);
     hashtags = tags;
     body = `${hook.open}\n\n${BIO_LINE}\n\n${hashtags.join(" ")}`;
   } else if (platform === "instagram") {
-    body = igMystery(shop, hook).replace("#rekomendasi #linkdiobio #belanjahemat #fyp #affiliate", tags.join(" "));
+    hashtags = tags;
+    body = igMystery(hook, tags);
   } else if (platform === "facebook") {
-    body = fbMystery(shop, hook);
+    hashtags = tags;
+    body = fbMystery(hook, tags);
   } else {
-    body = threadsMystery(shop, hook);
+    hashtags = tags;
+    body = threadsMystery(hook);
   }
 
   if (body.length > CHAR_LIMIT[platform]) {
