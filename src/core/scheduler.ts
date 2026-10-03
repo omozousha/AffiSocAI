@@ -32,6 +32,7 @@ import { listLinks, getLink, addContent, listContent, setContentStatus, syncLink
 import { buildIdentity, detectType } from "./product-identity.ts";
 import { imagePromptFor } from "./product-hook.ts";
 import { buildMysteryCaption, MYSTERY_PLATFORMS, topicFor } from "./mystery-caption.ts";
+import { fetchTopTrends } from "./trends.ts";
 import { listProviders, getProvider } from "./registry.ts";
 import { logActivity } from "./activity-log.ts";
 import type { SocialContent, SocialProvider } from "./types.ts";
@@ -838,6 +839,13 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
   const created = ensureSlots(now);
   if (!schedulerEnabled()) return { ran: [], created, warmed: 0 };
 
+  // Trending prefetch (newsjack hashtags) — feed the cache the sync caption
+  // builder reads. Best-effort: provider down = last cache stays, posts go.
+  try {
+    const t = await fetchTopTrends(3);
+    if (t.length > 0) logActivity({ level: "info", source: "system", event: "trends.refresh", message: t.map((x) => x.tag).join(" ") });
+  } catch { /* advisory */ }
+
   let warmed = 0;
   try {
     warmed = await warmSlots(now);
@@ -1046,6 +1054,9 @@ let timer: NodeJS.Timeout | null = null;
 export function startScheduler(): void {
   if (timer) clearInterval(timer);
   ensureHorizon(2);
+  // Warm the trends cache at boot so the first tick's captions have hashtags
+  // (fire-and-forget — a dead provider never blocks startup).
+  void fetchTopTrends(3).catch(() => {});
   timer = setInterval(() => {
     tick().catch((e) => {
       logActivity({

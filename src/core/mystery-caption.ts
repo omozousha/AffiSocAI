@@ -17,6 +17,7 @@ import type { ContentRow } from "./store.ts";
 import type { LinkInfo } from "./templates.ts";
 import { buildIdentity, detectType } from "./product-identity.ts";
 import { pickHook, type HookVariant } from "./product-hook.ts";
+import { cachedTrends } from "./trends.ts";
 
 export type MysteryDraft = {
   platform: "instagram" | "facebook" | "x" | "threads";
@@ -139,7 +140,11 @@ export function buildMysteryCaption(
   });
   const hook = pickHook(identity, publishIndex);
   const type = detectType(identity);
-  const tags = tagsFor(type);
+  // Hashtag line = topic tags for the product category + top-3 trending
+  // (newsjack). Trends come from the scheduler prefetch cache; empty cache =
+  // same behavior as before this feature.
+  const trending = cachedTrends(3).map((t) => t.tag);
+  const tags = [...tagsFor(type), ...trending.filter((tg) => !tagsFor(type).includes(tg))];
   const constraints: string[] = [];
 
   let body = "";
