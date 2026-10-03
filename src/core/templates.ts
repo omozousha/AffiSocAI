@@ -7,6 +7,15 @@
  */
 
 import type { ContentRow } from "./store.ts";
+import { buildIdentity, detectType } from "./product-identity.ts";
+
+/** Generic category word per product type — no brand, no item name. */
+const CATEGORY_WORD: Record<string, string> = {
+  helm: "helm", gadget: "gadget", rumah: "peralatan rumah",
+  skincare: "skincare", fashion: "outfit", sepatu: "sepatu",
+  tas: "tas", motor: "aksesoris motor", olahraga: "perlengkapan olahraga",
+  mainan: "mainan", makanan: "camilan",
+};
 
 export type LinkInfo = {
   short_url: string;
@@ -62,29 +71,36 @@ function shopLabel(link: LinkInfo): string {
   const clean = link.shop.replace(/[._-]+/g, " ").trim();
   return clean.replace(/\b\w/g, (c) => c.toUpperCase());
 }
+void shopLabel; // kept only for reference; NEVER call it in a caption path
+
+/** Product type -> generic Indonesian category word (helm/sepatu/...). Never a name. */
+function detectCategoryWord(link: LinkInfo): string {
+  const id = buildIdentity({
+    product: link.product ?? null,
+    kategori: link.kategori ?? null,
+    shop: null,
+  });
+  return CATEGORY_WORD[detectType(id)] ?? "barang ini";
+}
 
 function buildBody(platform: Draft["platform"], link: LinkInfo, linkUrl: string): Draft {
-  const shop = shopLabel(link);
-  const name = productName(link.product);
   const notes: string[] = [];
   let body: string;
 
   const bio = "Link & detail lengkap ada di bio.";
 
+  // No brand, no shop slug, no product name, no shipping claims: the same
+  // spill rules as the mystery track. Direct differs only by tone: it talks
+  // about the generic CATEGORY (helm/sepatu/...), never a merk or item name.
+  const cat = detectCategoryWord(link);
   if (platform === "x") {
-    body = name
-      ? `${name} — dapet harga hemat di ${shop}.\n\nLink ada di bio.`
-      : `Dapet harga hemat di ${shop}.\n\nLink ada di bio.`;
+    body = `Setelah pakai ${cat}, baru paham kenapa orang repeats beli yang beginian.\n\nLink ada di bio.`;
     notes.push("X links no longer go inline: link placement is bio-only.");
   } else if (platform === "facebook") {
-    body = name
-      ? [`Baru lihat ${name} di ${shop}.`, "", "Harga oke, ada gratis ongkir di beberapa waktu. Cocok buat yang lagi cari yang mirip.", "", bio].join("\n")
-      : [`Baru nemu ini di ${shop}.`, "", "Harga oke, kualitas sesuai deskripsi — cocok buat yang lagi cari yang mirip.", "", bio].join("\n");
+    body = [`Cerita singkat soal ${cat} yang satu ini.`, "", "Awalnya biasa aja, ternyata kepakai terus tiap hari dan harganya masuk kantong.", "", bio].join("\n");
     notes.push("Text-only post via FACEBOOK_CREATE_POST; add a product image URL before publishing.");
   } else {
-    body = name
-      ? [`Baru nyoba ${name} dari ${shop} dan ternyata oke.`, "", "Yang suka: modelnya pas dan bahannya nggak gampang lecet.", "Yang kurang: pengiriman standar, jadi kalau buru-buru pilih yang lebih cepat.", "", bio, "", "#affiliate #shopee #rekomendasi #belanjahemat"].join("\n")
-      : ["Hari ini nyoba produk dari " + shop + " dan ternyata oke banget.", "", "Yang suka: harganya masuk kantong dan hasilnya nggak mengecewakan.", "Yang kurang: pengiriman standar, jadi kalau buru-buru pilih yang lebih cepat.", "", bio, "", "#affiliate #shopee #rekomendasi #belanjahemat"].join("\n");
+    body = [`Jujur, ${cat} ini nggak pernah nyesel dipakai.`, "", "Yang suka: simpel, kepakai tiap hari, dan harganya masuk kantong.", "Yang kurang: pengiriman standar, jadi kalau buru-buru pilih yang lebih cepat.", "", bio, "", "#rekomendasi #belanjahemat #linkdiobio"].join("\n");
     notes.push("Instagram needs media: a single image_url is required; the link stays on the bio page only.");
   }
 
