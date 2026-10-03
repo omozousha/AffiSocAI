@@ -373,22 +373,23 @@ export default function Links({ go }: { go: (r: string) => void }) {
                   aria-label={`pilih link ${l.id}`}
                   className="mt-1"
                 />
-                {l.image_url ? (
-                  <img src={l.image_url} alt="" loading="lazy" className="h-16 w-16 flex-none rounded object-cover" />
-                ) : (
-                  <span className="flex h-16 w-16 flex-none items-center justify-center rounded bg-zinc-800 text-xs text-zinc-500">
-                    —
-                  </span>
-                )}
-                <div className="min-w-0 flex-1">
-                  <a
-                    href={l.short_url}
-                    target="_blank"
-                    rel="noopener"
-                    className="truncate text-sm font-medium hover:underline"
-                  >
+                <a
+                  href={l.short_url}
+                  target="_blank"
+                  rel="noopener"
+                  className="group relative h-20 w-20 flex-none overflow-hidden rounded"
+                  title={l.product || l.kategori || l.short_url}
+                >
+                  {l.image_url ? (
+                    <img src={l.image_url} alt="" loading="lazy" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center bg-zinc-800 text-xs text-zinc-500">—</span>
+                  )}
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent px-1.5 pb-1 pt-5 text-[10px] font-medium leading-tight line-clamp-2 text-white">
                     {l.product || l.kategori || l.short_url}
-                  </a>
+                  </span>
+                </a>
+                <div className="min-w-0 flex-1">
                   <div className="mt-1 flex flex-wrap gap-1">
                     {l.kategori && <Badge variant="secondary">{l.kategori}</Badge>}
                     {l.image_url?.startsWith("/api/") ? (
