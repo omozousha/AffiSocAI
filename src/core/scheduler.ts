@@ -568,7 +568,15 @@ async function preparePost(slot: SlotRow): Promise<PreparedPost> {
   // non-http URL outright (proven live: slot 35684 — all three platforms
   // refused "mediaUrl must be an http(s) URL").
   let mediaUrl = absoluteForProvider(warmedMedia ?? link.image_url!);
-  const looksGenerated = warmedMedia != null || /^https?:\/\/affine\.realpaytrans\.my\.id\/api\/images\//.test(mediaUrl) || mediaUrl.startsWith("/api/images/");
+  // "Generated" means OUR served creative (affine /api/images or local path).
+  // A warmed CDN/suser URL is NOT a generated creative — proven live: slot
+  // 26506 warmed the raw susercontent photo (recreate died on the then-dead
+  // gate), looksGenerated wrongly said true, Threads refused it with Meta's
+  // "unknown error" while IG/FB fetched it fine. Only our own URL is fetchable
+  // by every platform.
+  const isOurCreative = (u: string) =>
+    /^https?:\/\/affine\.realpaytrans\.my\.id\/api\/images\//.test(u) || u.startsWith("/api/images/");
+  const looksGenerated = isOurCreative(warmedMedia ?? "") || isOurCreative(mediaUrl);
   const { recreateProductImage } = await import("./recreate-image.ts");
   if (!looksGenerated) {
     try {
