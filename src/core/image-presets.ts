@@ -191,38 +191,20 @@ export function presetPrompt(presetId: string | null | undefined, productLabel: 
  * Used verbatim: the reference photo carries the product identity, so no
  * product label is injected — the model preserves the photo's subject.
  */
-export const PREMIUM_IMG2IMG_PROMPT = `Transform the provided product photo into a premium, professional e-commerce product image.
+export const PREMIUM_IMG2IMG_PROMPT = `Recreate the EXACT product from the reference photo as a premium e-commerce hero shot. This is a restyle of the same photo — NOT a new design.
 
-Preserve the original product exactly as the main subject, including its shape, proportions, structure, materials, colors, textures, important details, and recognizable characteristics. Do not redesign, replace, or invent the product.
+FIDELITY LOCK (absolute, highest priority — overrides everything below):
+- The product must be pixel-faithful to the reference: identical silhouette, identical shape and proportions, identical part count, identical colors and color placement, identical materials and surface texture, identical seams/holes/buttons/ports/straps/edges, identical printed text and label positions where legible.
+- Do not redesign, restyle, resize, re-angle, re-brand, simplify, embellish, merge, split, mirror-flip, or invent ANY feature of the product. Do not add parts the reference does not show; do not remove parts the reference shows.
+- Same product type and same viewing angle family as the reference. If the reference shows one object, output exactly one object — never a different object, even one of the same category.
+- When in doubt between making the image prettier and keeping the product exact: keep the product exact.
 
-Improve the overall visual presentation to make the product look attractive, clean, modern, premium, trustworthy, and professionally photographed for an online shop.
+STYLING (what you ARE allowed to improve):
+- Background: clean seamless light-gray studio sweep with a soft radial brightening behind the product (premium minimalist marketplace look). Neutral, uncluttered, product floats as the hero.
+- Lighting: professional softbox studio setup — soft directional key light, gentle fill, realistic contact shadow beneath the product, natural highlights and reflections, balanced exposure.
+- Composition: product centered, fills the frame with modest negative space, subtle ground contact and depth, crisp edges, sharp focus across the product, fine material detail.
+- Color grade: accurate, true-to-reference product colors; overall image clean, bright, modern, high-end commercial photography quality, photorealistic, high resolution.
 
-Create a visually appealing commercial product photography composition with:
-- clean and polished appearance
-- professional studio lighting
-- soft realistic shadows
-- natural highlights and reflections
-- balanced exposure
-- accurate and realistic colors
-- sharp product details
-- subtle depth and dimensionality
-- clean background with a premium minimalist aesthetic
-- visually balanced composition
-- suitable negative space around the product
-- realistic perspective
-- high-end commercial photography quality
-- crisp edges and fine material details
-- subtle separation between the product and background
-- natural-looking contrast
-- premium visual hierarchy
-- optimized composition for online shopping platforms
+NEVER ADD: brand names, logos, watermarks, slogans, promotional text, prices, badges, rating stars, "free shipping" ribbons, packaging redesign, props, models, hands, reflections of other objects, invented glow/particles.
 
-Make the product immediately noticeable and visually appealing while keeping the image realistic and commercially credible.
-
-The final image should look like a professionally produced e-commerce product photograph, suitable for product listings, marketplaces, catalogs, advertisements, social media commerce, and promotional materials.
-
-Do not add any brand name, logo, watermark, slogan, promotional text, price, badge, label, packaging redesign, or artificial product features.
-
-Do not change the identity or fundamental appearance of the original product.
-
-Photorealistic, premium commercial product photography, realistic materials, realistic lighting, highly detailed, clean, elegant, modern, professional, visually appealing, high resolution.`;
+Output: one photorealistic premium product photograph of the exact product from the reference, as if shot in a top-tier studio — identical product, elevated presentation.`;
