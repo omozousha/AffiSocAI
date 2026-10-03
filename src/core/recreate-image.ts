@@ -282,10 +282,17 @@ export async function recreateProductImage(
     byteLen: buf.length,
   });
   const served = `/api/images/${file}`;
+  // AFFILIATE_REQUIRE_GATE=1 (operator set while the router2nd vision provider
+  // is dead): an UNreviewed creative must NOT ship — infra-fail now behaves like
+  // a reject, the post keeps the sealed original photo instead of an unchecked
+  // AI image. Default stays permissive (fallback-to-live) for when the gate is
+  // only briefly flaky.
+  const requireGate = process.env.AFFILIATE_REQUIRE_GATE === "1";
+  const infraFail = /review-infra-fail/.test(review.reason || "");
   const live =
     review.approved ||
-    process.env.AFFILIATE_REVIEW_BYPASS === "1" ||
-    /review-infra-fail/.test(review.reason || "");
+    (process.env.AFFILIATE_REVIEW_BYPASS === "1" && !requireGate) ||
+    (infraFail && !requireGate);
   if (live) {
     try {
       updateLinkImage(link.id, served);
@@ -293,7 +300,7 @@ export async function recreateProductImage(
       console.error("[recreate] could not persist image_url:", String(e).slice(0, 200));
     }
   } else {
-    console.warn(`[recreate] review REJECT link ${link.id} (${backend}): ${review.reason} — file kept, original photo stays live`);
+    console.warn(`[recreate] review ${infraFail ? "INFRA-FAIL (gate required)" : "REJECT"} link ${link.id} (${backend}): ${review.reason} — file kept, original photo stays live`);
   }
 
   return {

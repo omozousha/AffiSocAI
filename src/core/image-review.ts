@@ -101,6 +101,12 @@ export async function reviewCreative(
     if (bytes.length > 4_000_000) return { ...empty, reason: "review-infra-fail: oversize-for-vision" };
     const dataUri = `data:${mime};base64,${bytes.toString("base64")}`;
     const mimo = await mimoCheck(product, dataUri);
+    // A gateway can answer HTTP 200 with a quota/billing notice instead of a
+    // verdict (proven live: bdl/deepseek-vision -> "Your quota is exhausted").
+    // That is NOT a review — treat it as infra-fail so REQUIRE_GATE can act on it.
+    if (/quota\s+is\s+exhausted|API key required|insufficient credit/i.test(mimo)) {
+      return { ...empty, reason: `review-infra-fail: vision-quota-gate: ${mimo.slice(0, 120)}` };
+    }
     const yes = /^\s*yes\b/i.test(mimo);
     if (!yes) {
       return { approved: false, reason: `vision-reject: ${mimo.slice(0, 160)}`, mimo_says: mimo.slice(0, 300), jev_scores: {} };
