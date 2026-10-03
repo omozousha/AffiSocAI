@@ -14,7 +14,12 @@
  */
 
 const BASE = (process.env.AFFILIATE_ROUTER_BASE_URL || "https://router2nd.realpaytrans.my.id/v1").replace(/\/+$/, "");
-const VISION_MODEL = process.env.AFFILIATE_REVIEW_VISION_MODEL || "jj/mimo-v2.6-flash";
+// 2026-10-03: mimo (openai provider) dead on router2nd — 403/404 "Edge
+// unavailable"/"No active credentials". Proven control-pair replacement:
+// ag/gemini-3.8-flash (YES on pump, NO on backpack). Old mimo kept as
+// automatic fallback via AFFILIATE_REVIEW_VISION_MODEL if it revives.
+const VISION_MODELS = (process.env.AFFILIATE_REVIEW_VISION_MODEL ||
+  "ag/gemini-3.8-flash,jj/mimo-v2.6-flash").split(",").map((s) => s.trim()).filter(Boolean);
 const JUDGE_MODEL = "oc/jev-1.13-free";
 
 function apiKey(): string {
@@ -31,7 +36,7 @@ export type ReviewVerdict = {
 };
 
 async function mimoCheck(product: string, dataUri: string): Promise<string> {
-  const body = {
+  const body = (model: string) => ({
     stream: false,
     max_tokens: 200,
     messages: [{
@@ -41,18 +46,33 @@ async function mimoCheck(product: string, dataUri: string): Promise<string> {
         { type: "image_url", image_url: { url: dataUri } },
       ],
     }],
-    model: VISION_MODEL,
-  };
-  const res = await fetch(`${BASE}/chat/completions`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey()}` },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(90_000),
+    model,
   });
-  if (!res.ok) throw new Error(`vision HTTP ${res.status}`);
-  const j = await res.json() as any;
-  const t = j?.choices?.[0]?.message?.content;
-  return (typeof t === "string" ? t : "").trim();
+  // Try each configured vision model; a dead route (HTTP error / no choices /
+  // quota-gate text) moves to the next. Only if ALL are dead it throws and the
+  // caller classifies review-infra-fail.
+  let lastErr = "no vision model configured";
+  for (const model of VISION_MODELS) {
+    try {
+      const res = await fetch(`${BASE}/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${apiKey()}` },
+        body: JSON.stringify(body(model)),
+        signal: AbortSignal.timeout(90_000),
+      });
+      if (!res.ok) { lastErr = `vision ${model} HTTP ${res.status}`; continue; }
+      const j = await res.json() as any;
+      if (j?.error) { lastErr = `vision ${model}: ${String(j.error?.message ?? j.error).slice(0, 80)}`; continue; }
+      const t = j?.choices?.[0]?.message?.content;
+      const s = (typeof t === "string" ? t : "").trim();
+      if (!s) { lastErr = `vision ${model}: empty`; continue; }
+      if (/quota is exhausted|API key required|insufficient credit/i.test(s)) { lastErr = `vision ${model}: quota-gate`; continue; }
+      return s;
+    } catch (e) {
+      lastErr = `vision ${model}: ${String(e).slice(0, 60)}`;
+    }
+  }
+  throw new Error(lastErr);
 }
 
 async function jevApprove(state: string): Promise<Record<string, number>> {

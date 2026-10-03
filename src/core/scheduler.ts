@@ -421,18 +421,32 @@ export function pickLink(preferNew = true): ReturnType<typeof getLink> {
     if (!prev || s.scheduled_for > prev) lastByLink.set(s.link_id, s.scheduled_for);
   }
 
+  // HARD per-link cooldown (3 h, last_published_at is UTC): the same product
+  // must never appear in two slots minutes apart (proven: link 21 published
+  // twice, 19:30 & 19:57, because pool-level anti-bosu was bypassed by the
+  // small-pool rule). When EVERY link is cooling — a pool of one — we still
+  // post something rather than starve, but only that last link.
+  const COOLDOWN_MS = 3 * 60 * 60 * 1000;
+  const cooling = new Set<number>();
+  for (const l of pool) {
+    const t = l.last_published_at ? Date.parse(l.last_published_at.replace(" ", "T") + "Z") : NaN;
+    if (!Number.isNaN(t) && Date.now() - t < COOLDOWN_MS) cooling.add(l.id);
+  }
+  const elig = pool.filter((l) => !cooling.has(l.id));
+  const workPool = elig.length > 0 ? elig : pool.filter((l) => cooling.has(l.id));
+
   // 1) Newest never-posted link first — fresh products get priority.
   // Anti-bosu: links posted within REPOST_WINDOW_DAYS are skipped while
   // anything else exists. Bypassed when the pool is smaller than the window.
   const recent = recentLinkIds();
   const unrecent = (arr: ReturnType<typeof listLinks>) =>
     arr.length > recent.size ? arr.filter((l) => !recent.has(l.id)) : arr;
-  const freshAll = pool.filter((l) => !lastByLink.has(l.id));
+  const freshAll = workPool.filter((l) => !lastByLink.has(l.id));
   const fresh = unrecent(freshAll);
   if (preferNew && fresh.length > 0) return fresh[fresh.length - 1];
 
   // 2) Otherwise least-recently-posted, but never a link already posted today.
-  const restAll = pool
+  const restAll = workPool
     .filter((l) => !postedToday.has(l.id))
     .sort((a, b) => {
       const ta = lastByLink.get(a.id) ?? "";
@@ -442,11 +456,15 @@ export function pickLink(preferNew = true): ReturnType<typeof getLink> {
   const rest = unrecent(restAll);
   if (rest.length > 0) return rest[0];
 
-  // 3) Everything was posted today already: random pick (SQLite RANDOM()).
-  const row = db.prepare(
-    `SELECT id FROM links WHERE image_url IS NOT NULL AND image_url != '' ORDER BY RANDOM() LIMIT 1`,
-  ).get() as { id: number } | undefined;
-  return row ? getLink(row.id) : pool[pool.length - 1];
+  // 3) Everything was posted today already: pick the link whose last publish
+  // is FURTHEST back — the cooldown queue order. Honours the 3h rule as far as
+  // the pool allows (a one-link pool posts it; starving is worse than repeat).
+  const byIdle = [...workPool].sort((a, b) => {
+    const ta = a.last_published_at ? Date.parse(a.last_published_at.replace(" ", "T") + "Z") : 0;
+    const tb = b.last_published_at ? Date.parse(b.last_published_at.replace(" ", "T") + "Z") : 0;
+    return ta - tb;
+  });
+  return byIdle[0] ?? pool[pool.length - 1];
 }
 
 /**
