@@ -28,7 +28,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { listLinks, getLink, addContent, listContent, setContentStatus } from "./store.ts";
+import { listLinks, getLink, addContent, listContent, setContentStatus, syncLinkMarkers } from "./store.ts";
 import { buildIdentity, detectType } from "./product-identity.ts";
 import { imagePromptFor } from "./product-hook.ts";
 import { buildMysteryCaption, MYSTERY_PLATFORMS, topicFor } from "./mystery-caption.ts";
@@ -795,6 +795,14 @@ export async function runSlot(slot: SlotRow): Promise<SlotRow> {
       post_url: first.post_url,
       error: errNote,
     });
+    // Penanda link: auto-publish harus menandai links juga. reconcile dari
+    // tabel content (satu sumber kebenaran) — murah, idempoten, sekaligus
+    // memperbaiki row lama yang belum pernah ditandai.
+    if (prepared.link_id != null) {
+      try {
+        syncLinkMarkers();
+      } catch { /* marker is advisory */ }
+    }
   } else {
     // Smart retry: exponential backoff (15m → 30m → 60m …) instead of failing
     // at 3 attempts. The slot stays pending and the next tick re-claims it at
@@ -889,6 +897,10 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
   try {
     await backfillPermalinks();
   } catch { /* best-effort; never blocks the posting path */ }
+
+  // Penanda link direkonsiliasi dari content tiap tick — murah (1 query),
+  // idempoten, sekaligus backfill row lama yang belum pernah ditandai.
+  try { syncLinkMarkers(); } catch { /* advisory */ }
 
   return { ran, created, warmed };
 }

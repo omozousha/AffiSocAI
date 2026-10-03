@@ -302,6 +302,56 @@ export function markLinkPublished(id: number, postUrl?: string | null): void {
   ).run(postUrl ?? null, id);
 }
 
+/**
+ * Reconcile the published markers on links from the content table — the one
+ * source of truth. published_count counts content rows with status='published'
+ * per link (each platform row counts once), so auto-publish slots and manual
+ * publishes converge to the same number and old rows never marked get fixed.
+ * Returns the number of link rows touched. Safe to run every scheduler tick.
+ */
+export function syncLinkMarkers(): number {
+  const rows = db.prepare(
+    `SELECT c.link_id AS id,
+            count(*) AS n,
+            max(c.created_at) AS last,
+            (SELECT c2.post_url FROM content c2
+              WHERE c2.link_id = c.link_id AND c2.status = 'published' AND c2.post_url IS NOT NULL
+                AND c2.platform = 'instagram'
+              ORDER BY c2.id DESC LIMIT 1) AS url_ig,
+            (SELECT c2.post_url FROM content c2
+              WHERE c2.link_id = c.link_id AND c2.status = 'published' AND c2.post_url IS NOT NULL
+                AND c2.platform != 'threads'
+              ORDER BY c2.id DESC LIMIT 1) AS url_np,
+            (SELECT c2.post_url FROM content c2
+              WHERE c2.link_id = c.link_id AND c2.status = 'published' AND c2.post_url IS NOT NULL
+                AND c2.post_url NOT LIKE '%/@me/%'
+              ORDER BY c2.id DESC LIMIT 1) AS url_any
+       FROM content c
+      WHERE c.status = 'published' AND c.link_id IS NOT NULL
+      GROUP BY c.link_id`
+  ).all() as { id: number; n: number; last: string; url_ig: string | null; url_np: string | null; url_any: string | null }[];
+  const stmt = db.prepare(
+    `UPDATE links
+       SET published_count = ?,
+           last_published_at = ?,
+           published_at = COALESCE(published_at, ?),
+           published_url = CASE
+             WHEN ? IS NOT NULL
+                  AND (published_url IS NULL OR published_url LIKE '%/@me/%' OR (? LIKE '%instagram.com%' AND published_url NOT LIKE '%instagram.com%'))
+             THEN ? ELSE published_url END,
+           is_published = '1'
+     WHERE id = ?`
+  );
+  let touched = 0;
+  for (const r of rows) {
+    // preferensi permalink: Instagram > platform lain > apa pun yang bukan @me
+    const url = r.url_ig ?? r.url_np ?? r.url_any ?? null;
+    stmt.run(r.n, r.last, r.last, url, url, url, r.id);
+    touched++;
+  }
+  return touched;
+}
+
 /** Backfill the permalink once Instagram publishes it (post_id precedes it). */
 export function setContentPostUrl(id: number, postUrl: string): void {
   db.prepare("UPDATE content SET post_url = ?, updated_at = datetime('now') WHERE id = ?").run(postUrl, id);
