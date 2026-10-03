@@ -657,7 +657,8 @@ const server = createServer(async (req, res) => {
       const link = getLink(Number(body.link_id));
       if (!link) return json(res, 404, { error: `no link with id ${body.link_id}` });
       const platforms = Array.isArray(body.platforms) && body.platforms.length ? body.platforms : MYSTERY_PLATFORMS;
-      const drafts = platforms.map((p: MysteryDraft["platform"]) => buildMysteryCaption(p, link));
+      const idx = Number(link.published_count ?? 0);
+      const drafts = platforms.map((p: MysteryDraft["platform"]) => buildMysteryCaption(p, link, idx));
       const mediaUrl = link.image_url ?? null;
       return json(res, 200, {
         drafts: drafts.map((d) => ({
@@ -912,7 +913,7 @@ const server = createServer(async (req, res) => {
       if (ready.length === 0) return json(res, 502, { error: "no publishable platform: every provider is disconnected or cannot post media" });
       const target = (want ? ready.find((t) => t.key === want) : ready[0]) ?? null;
       if (!target) return json(res, 400, { error: `platform ${want} is not publishable (ready: ${ready.map((t) => t.key).join(",")})` });
-      const draft = buildMysteryCaption(target.key, link as Parameters<typeof buildMysteryCaption>[1]);
+      const draft = buildMysteryCaption(target.key, link as Parameters<typeof buildMysteryCaption>[1], Number(link.published_count ?? 0));
       // Post the generated product image, not the raw Shopee CDN photo. A link
       // that never went through Recreate still points at susercontent — run it
       // now so every post carries the generated creative.

@@ -31,7 +31,10 @@ const BLOCK = [
   "hilang", "tenggelam", "kebakaran", "ledakan", "virus", "wabah", "kematian",
 ];
 
-/** Query text -> safe hashtag: strip noise, camel-join words, <=24 chars. */
+/** Junk a feed can contain that must never become a hashtag. */
+const NOISE = ["video", "videos", "trending", "search", "google", "youtube"];
+
+/** Query text -> safe hashtag: strip noise, camel-join words, quality-gated. */
 export function toTag(q: string): string {
   const words = q
     .toLowerCase()
@@ -41,7 +44,11 @@ export function toTag(q: string): string {
     .slice(0, 3);
   if (words.length === 0) return "";
   const joined = words.map((w) => w[0]!.toUpperCase() + w.slice(1)).join("");
-  return joined.length > 24 ? "" : joined;
+  // quality gate: <4 chars (feeds full of "Bkn"-type acronyms) or >24 reads like spam
+  if (joined.length < 4 || joined.length > 24) return "";
+  if (NOISE.some((n) => joined.toLowerCase() === n)) return "";
+  if (/^\d+$/.test(joined)) return "";
+  return joined;
 }
 
 function blocked(q: string): boolean {
