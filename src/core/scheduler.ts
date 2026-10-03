@@ -545,7 +545,11 @@ async function preparePost(slot: SlotRow): Promise<PreparedPost> {
   // the cron converges every product to the premium style over time.
   // The creative is generated ONCE per slot and shared by all platforms.
   // A warmed creative skips regeneration entirely — it was built pre-due.
-  let mediaUrl = warmedMedia ?? absoluteForProvider(link.image_url!);
+  // Both branches MUST go through absoluteForProvider: the warm step stores a
+  // LOCAL path (/api/images/…) in warmed_media_url, and Meta rejects any
+  // non-http URL outright (proven live: slot 35684 — all three platforms
+  // refused "mediaUrl must be an http(s) URL").
+  let mediaUrl = absoluteForProvider(warmedMedia ?? link.image_url!);
   const looksGenerated = warmedMedia != null || /^https?:\/\/affine\.realpaytrans\.my\.id\/api\/images\//.test(mediaUrl) || mediaUrl.startsWith("/api/images/");
   const { recreateProductImage } = await import("./recreate-image.ts");
   if (!looksGenerated) {
