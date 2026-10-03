@@ -34,6 +34,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [preview, setPreview] = useState<PreviewItem[] | null>(null);
+  const [imgPreview, setImgPreview] = useState<{ src: string; title: string } | null>(null);
   const [previewIds, setPreviewIds] = useState<number[]>([]);
   // Form tambah
   const [blob, setBlob] = useState("");
@@ -373,12 +374,11 @@ export default function Links({ go }: { go: (r: string) => void }) {
                   aria-label={`pilih link ${l.id}`}
                   className="mt-1"
                 />
-                <a
-                  href={l.short_url}
-                  target="_blank"
-                  rel="noopener"
+                <button
+                  type="button"
+                  onClick={() => setImgPreview({ src: l.image_url || "", title: l.product || l.kategori || l.short_url || `#${l.id}` })}
                   className="group relative h-20 w-20 flex-none overflow-hidden rounded"
-                  title={l.product || l.kategori || l.short_url}
+                  title={`${l.product || l.kategori || l.short_url} — tap untuk preview`}
                 >
                   {l.image_url ? (
                     <img src={l.image_url} alt="" loading="lazy" className="h-full w-full object-cover" />
@@ -388,7 +388,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
                   <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent px-1.5 pb-1 pt-5 text-[10px] font-medium leading-tight line-clamp-2 text-white">
                     {l.product || l.kategori || l.short_url}
                   </span>
-                </a>
+                </button>
                 <div className="min-w-0 flex-1">
                   <div className="mt-1 flex flex-wrap gap-1">
                     {l.kategori && <Badge variant="secondary">{l.kategori}</Badge>}
@@ -441,6 +441,36 @@ export default function Links({ go }: { go: (r: string) => void }) {
           )}
         </CardContent>
       </Card>
+
+      {imgPreview && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-black/85 p-4"
+          onClick={() => setImgPreview(null)}
+          role="dialog"
+          aria-label="Preview gambar"
+        >
+          {imgPreview.src ? (
+            <img
+              src={imgPreview.src}
+              alt={imgPreview.title}
+              className="max-h-[75vh] max-w-full rounded-lg object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <div className="flex h-40 w-40 items-center justify-center rounded-lg bg-zinc-800 text-zinc-500">
+              tidak ada gambar
+            </div>
+          )}
+          <div className="w-full max-w-lg text-center text-sm text-zinc-200" onClick={(e) => e.stopPropagation()}>
+            {imgPreview.title}
+          </div>
+          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+            <Button size="sm" variant="secondary" onClick={() => setImgPreview(null)}>
+              Tutup
+            </Button>
+          </div>
+        </div>
+      )}
 
       {preview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
