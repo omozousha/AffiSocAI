@@ -47,6 +47,8 @@ interface StoredToken {
   saved_at: string;
   /** epoch ms — a refresh is attempted this far before expiry */
   refresh_at: number;
+  /** cached Threads user id (set at first refresh/exchange) */
+  user_id?: string;
 }
 
 function readJsonFile(path: string): any {
@@ -174,9 +176,26 @@ export function authorizeUrl(): { url: string } | { error: string } {
     `https://threads.com/oauth/authorize` +
     `?client_id=${encodeURIComponent(app.clientId)}` +
     `&redirect_uri=${encodeURIComponent(app.redirectUri)}` +
-    `&scope=${encodeURIComponent("threads_basic,threads_content_publish")}` +
+    `&scope=${encodeURIComponent("threads_basic,threads_content_publish,threads_read_replies,threads_manage_replies")}` +
     `&response_type=code`;
   return { url };
+}
+
+/** Exported for the reply-management module (threads-replies.ts): same
+ * token/refresh discipline, no duplicate secret handling. Injects the access
+ * token and the /v1.0 prefix so callers pass bare node paths. */
+export async function graphGetForReplies(path: string, q: Record<string, string>) {
+  return graphGet(path.startsWith("/v1.0") ? path : `/v1.0${path}`, { ...q, access_token: await accessToken() });
+}
+export async function graphPostForReplies(path: string, b: Record<string, string>) {
+  return graphPost(path.startsWith("/v1.0") ? path : `/v1.0${path}`, { ...b, access_token: await accessToken() });
+}
+export async function threadsUserId(): Promise<string> {
+  const t = store();
+  if (t?.user_id) return String(t.user_id);
+  const me = await graphGetForReplies("/me", { fields: "id" });
+  if (t) save({ ...t, user_id: String(me.id) });
+  return String(me.id);
 }
 
 async function accessToken(): Promise<string> {

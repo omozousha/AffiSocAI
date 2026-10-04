@@ -81,7 +81,7 @@ function postUser(p: Record<string, unknown>): string {
 }
 
 /** Template reply matched to comment intent. Product name keeps it specific. */
-function templateReply(comment: string, product: string | null): string {
+export function templateReply(comment: string, product: string | null): string {
   const c = comment.toLowerCase();
   const name = product ? ` ${product.split(" ").slice(0, 4).join(" ")}` : "";
   if (/harga|berapa|price|murah|mahal/.test(c))

@@ -933,26 +933,51 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
   // Best-effort: a reply failure never blocks the posting path below.
   try {
     if (process.env.THREADS_AUTOREPLY === "1") {
-      const { scanReplies } = await import("./thread-replies.ts");
-      const { answeredCommentIds, recordReply } = await import("./store.ts");
-      const published = listContent().filter(
+      const publishedAll = listContent().filter(
         (c) => c.platform === "threads" && c.status === "published" && c.post_id,
       );
-      if (published.length > 0) {
-        const out = await scanReplies(published, answeredCommentIds(), { dryRun: false });
+      const { replyScopesReady, fetchComments, publishReply } = await import("../providers/threads-replies.ts");
+      const ready = await replyScopesReady();
+      if (ready.ok) {
+        const { answeredCommentIds, recordReply, getLink } = await import("./store.ts");
+        const { templateReply } = await import("./thread-replies.ts");
+        const answered = answeredCommentIds();
+        const since = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+        let repliedN = 0;
+        for (const row of publishedAll.slice(0, 6)) {
+          if (repliedN >= 5) break;
+          try {
+            const comments = await fetchComments(String(row.post_id), since);
+            for (const c of comments) {
+              if (c.mine || !c.text.trim() || answered.has(c.id)) continue;
+              const link = row.link_id ? getLink(row.link_id) : null;
+              const text = templateReply(c.text, link?.product ?? null);
+              const rid = await publishReply(text, c.id);
+              if (rid) {
+                recordReply({ content_id: row.id, comment_id: c.id, comment_user: c.username, comment_text: c.text.slice(0, 200), reply_text: text });
+                answered.add(c.id);
+                repliedN++;
+                await new Promise((r) => setTimeout(r, 5000));
+              }
+            }
+          } catch { /* one post's failure never kills the sweep */ }
+        }
+        if (repliedN > 0) logActivity({ level: "info", source: "system", event: "threads.autoreply", message: `auto-replied ${repliedN} comments (official API)` });
+      } else {
+        // scopes missing → unofficial sweep (currently blind) + loud once/day
+        const { scanReplies } = await import("./thread-replies.ts");
+        const { answeredCommentIds, recordReply } = await import("./store.ts");
+        const out = await scanReplies(publishedAll, answeredCommentIds(), { dryRun: false });
         for (const r of out.published) {
           try {
             recordReply({ content_id: r.contentId, comment_id: r.commentId, comment_user: r.commentUser, comment_text: r.commentText, reply_text: r.replyText });
           } catch { /* one bad row never blocks the rest */ }
         }
-        if (out.published.length > 0) {
-          logActivity({
-            level: "info",
-            source: "system",
-            event: "threads.autoreply",
-            message: `auto-replied ${out.published.length} threads comments`,
-            meta: { replied: out.published.map((r) => ({ content: r.contentId, comment: r.commentId })) },
-          });
+        if (out.published.length > 0) logActivity({ level: "info", source: "system", event: "threads.autoreply", message: `auto-replied ${out.published.length} comments (unofficial)` });
+        const lastWarn = metaGet("reply_scope_warn_day") ?? "";
+        if (lastWarn !== dayKey(now)) {
+          metaSet("reply_scope_warn_day", dayKey(now));
+          logActivity({ level: "warn", source: "system", event: "threads.reply.scopes", message: `auto-reply resmi BELUM aktif: ${ready.reason} — operator perlu re-consent OAuth (scope replies)` });
         }
       }
     }
