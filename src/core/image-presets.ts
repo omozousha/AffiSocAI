@@ -200,6 +200,7 @@ FIDELITY LOCK (absolute, highest priority — overrides everything below):
 - When in doubt between making the image prettier and keeping the product exact: keep the product exact.
 
 STYLING (what you ARE allowed to improve):
+- Ad-overlay REMOVAL (mandatory): delete all text and graphics that are NOT physically part of the product — promotional slogans, price/rating badges, feature icons, watermarks, corner logos, arrows, spec callouts baked into the reference photo. These are ad presentation, not product identity. Keep only text physically printed/engraved on the product itself.
 - Background: clean seamless light-gray studio sweep with a soft radial brightening behind the product (premium minimalist marketplace look). Neutral, uncluttered, product floats as the hero.
 - Lighting: professional softbox studio setup — soft directional key light, gentle fill, realistic contact shadow beneath the product, natural highlights and reflections, balanced exposure.
 - Composition: product centered, fills the frame with modest negative space, subtle ground contact and depth, crisp edges, sharp focus across the product, fine material detail.
