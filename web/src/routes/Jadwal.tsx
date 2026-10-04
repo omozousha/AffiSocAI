@@ -340,7 +340,7 @@ export default function Jadwal() {
               return (
                 <div
                   key={s.id}
-                  className={`flex items-center gap-3 rounded-md border p-3 ${
+                  className={`md:grid md:grid-cols-[3.5rem_minmax(0,1fr)_auto] md:items-center md:gap-3 flex items-center gap-3 rounded-md border p-3 ${
                     s.id === nextId ? "border-accent" : "border-zinc-800"
                   }`}
                 >
@@ -349,7 +349,7 @@ export default function Jadwal() {
                     <span className="block text-[10px] font-normal text-zinc-500">WIB</span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium">
+                    <div className="truncate text-sm font-medium" title={`Slot ${s.slot_index + 1} · ${s.link_id != null ? "link " + s.link_id : "link otomatis"}`}>
                       Slot {s.slot_index + 1} · {s.link_id != null ? `link ${s.link_id}` : "link otomatis"}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -373,7 +373,7 @@ export default function Jadwal() {
                       </div>
                     )}
                   </div>
-                  <div>
+                  <div className="md:justify-self-end">
                     {locked ? (
                       <span title="sudah terbit, terkunci">🔒</span>
                     ) : (
@@ -458,13 +458,13 @@ export default function Jadwal() {
             <Skeleton className="h-14" />
           ) : tomorrow.length ? (
             tomorrow.map((s) => (
-              <div key={s.id} className="flex items-center gap-3 rounded-md border border-zinc-800 p-3">
+              <div key={s.id} className="md:grid md:grid-cols-[3.5rem_minmax(0,1fr)_auto] md:items-center md:gap-3 flex items-center gap-3 rounded-md border border-zinc-800 p-3">
                 <div className="w-14 flex-none text-lg font-bold">
                   {wibHm(s.scheduled_for)}
                   <span className="block text-[10px] font-normal text-zinc-500">WIB</span>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium">Slot {s.slot_index + 1}</div>
+                  <div className="truncate text-sm font-medium" title={`Slot ${s.slot_index + 1}`}>Slot {s.slot_index + 1}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-1">
                     <Badge variant={(STATUS_VARIANT[s.status] ?? "outline") as BadgeVariant}>
                       {STATUS_LABEL[s.status] ?? s.status}

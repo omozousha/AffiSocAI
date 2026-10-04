@@ -366,7 +366,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
             </>
           ) : rows.length ? (
             rows.map((l) => (
-              <div key={l.id} className="flex gap-3 rounded-md border border-zinc-800 p-3">
+              <div key={l.id} className="md:grid md:grid-cols-[1rem_5rem_minmax(0,1fr)_auto] md:items-start md:gap-3 flex gap-3 rounded-md border border-zinc-800 p-3">
                 <input
                   type="checkbox"
                   checked={sel.has(l.id)}
@@ -377,7 +377,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
                 <button
                   type="button"
                   onClick={() => setImgPreview({ src: l.image_url || "", title: l.product || l.kategori || l.short_url || `#${l.id}` })}
-                  className="group relative h-20 w-20 flex-none overflow-hidden rounded"
+                  className="group relative h-20 w-20 flex-none overflow-hidden rounded md:h-16 md:w-16"
                   title={`${l.product || l.kategori || l.short_url} — tap untuk preview`}
                 >
                   {l.image_url ? (
