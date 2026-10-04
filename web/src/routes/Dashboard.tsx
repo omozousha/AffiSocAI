@@ -29,6 +29,21 @@ interface ProvidersBody {
   providers?: { status: string }[];
 }
 
+interface MetricRow {
+  content_id: number;
+  platform: string;
+  metrics: Record<string, number>;
+  fetched_at: string;
+}
+interface MetricsBody {
+  metrics?: MetricRow[];
+}
+
+/** single reach-ish number for ranking (IG has reach, FB media views, threads empty) */
+function reachOf(m: Record<string, number>): number {
+  return m.reach ?? m.views ?? m.post_media_view ?? 0;
+}
+
 export default function Dashboard({ go }: { go: (r: string) => void }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -36,14 +51,16 @@ export default function Dashboard({ go }: { go: (r: string) => void }) {
   const [links, setLinks] = useState<Link[]>([]);
   const [liveCount, setLiveCount] = useState("");
   const [platRows, setPlatRows] = useState<{ slug: string; ready: boolean }[]>([]);
+  const [metrics, setMetrics] = useState<MetricRow[]>([]);
 
   const load = useCallback(async () => {
     setErr("");
     try {
-      const [s, l, p] = await Promise.all([
+      const [s, l, p, mx] = await Promise.all([
         api<ScheduleBody>("/api/schedule?window=7"),
         api<LinksBody>("/api/links"),
         api<ProvidersBody>("/api/providers"),
+        api<MetricsBody>("/api/metrics?limit=50"),
       ]);
       if (s.status >= 400) throw new Error((s.body as { error?: string }).error || "gagal muat jadwal");
       setSched(s.body);
@@ -52,6 +69,7 @@ export default function Dashboard({ go }: { go: (r: string) => void }) {
       const provs = p.body.providers ?? [];
       const live = provs.filter((x) => x.status === "VERIFIED-EXECUTED").length;
       setLiveCount(`${live}/${provs.length}`);
+      setMetrics(mx.body.metrics ?? []);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -164,6 +182,44 @@ export default function Dashboard({ go }: { go: (r: string) => void }) {
               </Badge>
               <Badge variant="outline">{sched.trend?.content_queue ?? 0} konten siap</Badge>
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Performa posting</CardTitle>
+            <CardDescription>
+              {metrics.length > 0
+                ? `Metrik terkumpul otomatis tiap jam — ${metrics.length} post.`
+                : "Metrik ditarik otomatis tiap jam; muncul setelah post berumur >1 jam."}
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {metrics.length === 0 ? (
+            <p className="text-muted-foreground text-sm">Belum ada metrik tersimpan.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {[...metrics]
+                .sort((a, b) => reachOf(b.metrics) - reachOf(a.metrics))
+                .slice(0, 8)
+                .map((m) => (
+                  <li key={m.content_id} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <Badge variant="outline">{PLAT_LABEL[m.platform] ?? m.platform}</Badge>
+                      <span className="truncate text-muted-foreground">
+                        content #{m.content_id} · {new Date(m.fetched_at).toLocaleDateString("id-ID")}
+                      </span>
+                    </span>
+                    <span className="shrink-0 tabular-nums">
+                      jangkauan {reachOf(m.metrics)}
+                      {m.metrics.comments !== undefined && m.metrics.comments > 0 && ` · kom ${m.metrics.comments}`}
+                    </span>
+                  </li>
+                ))}
+            </ul>
           )}
         </CardContent>
       </Card>

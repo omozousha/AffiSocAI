@@ -327,6 +327,11 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { links: listLinks() });
     }
 
+    if (req.method === "GET" && url.pathname === "/api/metrics") {
+      const { listPostMetrics } = await import("../core/store.ts");
+      return json(res, 200, { metrics: listPostMetrics(Number(url.searchParams.get("limit") ?? 50)) });
+    }
+
     // --- Scheduler -------------------------------------------------------
     // 3 slots a day, in-process. These routes are status + control only: the
     // actual publish is driven by the tick loop, so a POST here never blocks

@@ -912,6 +912,17 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
     }
   } catch { /* advisory — never blocks posting */ }
 
+  // Analytics loop: hourly, max 6 composio pulls per batch (rate discipline —
+  // unbounded pulls pinned this VPS at load 10 before; see 8fbe017).
+  try {
+    const lastPull = Number(metaGet("metrics_last_pull_ts") ?? 0);
+    if (now.getTime() - lastPull > 60 * 60 * 1000) {
+      metaSet("metrics_last_pull_ts", String(now.getTime()));
+      const { pullMetricsBatch } = await import("./analytics.ts");
+      await pullMetricsBatch();
+    }
+  } catch { /* advisory */ }
+
   let warmed = 0;
   try {
     warmed = await warmSlots(now);

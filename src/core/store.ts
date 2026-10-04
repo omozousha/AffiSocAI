@@ -113,7 +113,44 @@ const cols = db.prepare(`PRAGMA table_info(content)`).all() as unknown as Array<
 if (!cols.some((c) => c.name === "first_comment")) {
   db.exec(`ALTER TABLE content ADD COLUMN first_comment TEXT`);
 }
-// Migration for a database created before product enrichment existed.
+// Post metrics pull loop: getAnalytics exists on IG/FB providers but nothing
+// consumed it — hook performance stayed invisible. Tick fetches a few stale
+// published rows into post_metrics; Dashboard ranks them.
+const CONTENT_DDL = `
+  CREATE TABLE IF NOT EXISTS post_metrics (
+    content_id INTEGER PRIMARY KEY,
+    platform   TEXT NOT NULL,
+    post_id    TEXT NOT NULL,
+    metrics    TEXT NOT NULL,
+    fetched_at TEXT NOT NULL
+  )`;
+db.exec(CONTENT_DDL);
+
+export function upsertPostMetrics(contentId: number, platform: string, postId: string, metrics: Record<string, number>): void {
+  db.prepare(
+    `INSERT INTO post_metrics (content_id, platform, post_id, metrics, fetched_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(content_id) DO UPDATE SET metrics = excluded.metrics, fetched_at = excluded.fetched_at`,
+  ).run(contentId, platform, postId, JSON.stringify(metrics), new Date().toISOString());
+}
+
+export function listPostMetrics(limit = 50): { content_id: number; platform: string; post_id: string; metrics: Record<string, number>; fetched_at: string }[] {
+  const rows = db.prepare(`SELECT * FROM post_metrics ORDER BY fetched_at DESC LIMIT ?`).all(limit) as unknown as { content_id: number; platform: string; post_id: string; metrics: string; fetched_at: string }[];
+  return rows.map((r) => ({ ...r, metrics: JSON.parse(r.metrics) }));
+}
+
+/** content ids yang metriknya sudah berumur > ageHours — target refresh tick. */
+export function staleMetricsContentIds(ageHours = 24, limit = 4): number[] {
+  const rows = db.prepare(
+    `SELECT c.id FROM content c
+     LEFT JOIN post_metrics m ON m.content_id = c.id
+     WHERE c.status = 'published' AND c.post_id IS NOT NULL AND c.post_id <> ''
+       AND (m.fetched_at IS NULL OR m.fetched_at < datetime('now', ?))
+     ORDER BY c.id DESC LIMIT ?`,
+  ).all(`-${ageHours} hours`, limit) as unknown as { id: number }[];
+  return rows.map((r) => r.id);
+}
+
 const linkCols = db.prepare(`PRAGMA table_info(links)`).all() as unknown as Array<{ name: string }>;
 for (const [col, ddl] of [["product", "TEXT"], ["image_url", "TEXT"], ["image_original", "TEXT"], ["deskripsi", "TEXT"], ["kategori", "TEXT"], ["sheet_id", "INTEGER"], ["published_count", "INTEGER DEFAULT 0"], ["last_published_at", "TEXT"], ["link_health", "TEXT"], ["link_checked_at", "TEXT"], ["link_dead_streak", "INTEGER DEFAULT 0"]] as const) {
   if (!linkCols.some((c) => c.name === col)) {
