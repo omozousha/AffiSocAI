@@ -65,23 +65,26 @@ export async function replyScopesReady(): Promise<ReadyResult> {
   }
 }
 
-/** Comments on one of our published threads posts (root = postMediaId). */
+/** Comments (top-level replies) on one of our published threads posts.
+ * Per Meta docs the correct node is GET /{media-id}/replies — the thread's
+ * own reply list; /{uid}/replies only lists replies the ACCOUNT created. */
 export async function fetchComments(postMediaId: string, sinceIso: string): Promise<OfficialComment[]> {
   const g = await graph();
   if (!g) throw new Error("graph unavailable");
-  const uid = await g.userId();
   const out: OfficialComment[] = [];
-  let url: string | null = `/${uid}/replies?object_activity=thread&fields=${encodeURIComponent(FIELDS)}&since=${encodeURIComponent(sinceIso)}&limit=50`;
+  let url = `/${postMediaId}/replies?fields=${encodeURIComponent(FIELDS)}&reverse=false&limit=50`;
   while (url) {
-    const j = await g.graphGet(url.split("?")[0], Object.fromEntries(new URLSearchParams(url.split("?")[1] ?? "")));
+    const [path, qs] = url.split("?");
+    const j = await g.graphGet(path, Object.fromEntries(new URLSearchParams(qs ?? "")));
     for (const d of j.data ?? []) {
       const root = String(d.root_post?.id ?? d.root_post ?? "");
-      if (root && root !== postMediaId) continue;
+      const ts = String(d.timestamp ?? "");
+      if (ts && ts < sinceIso) continue;
       out.push({
         id: String(d.id),
         text: String(d.text ?? ""),
         username: String(d.username ?? ""),
-        timestamp: String(d.timestamp ?? ""),
+        timestamp: ts,
         mine: Boolean(d.is_reply_owned_by_me),
         rootPost: root,
       });
