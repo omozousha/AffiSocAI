@@ -121,7 +121,16 @@ export class FacebookAdapter implements SocialProvider {
   }
 
   async getPostStatus(postId: string): Promise<PostStatus> {
-    const res = await composio.execute("FACEBOOK_GET_POST", { post_id: postId });
+    // FACEBOOK_GET_POST demands full format "pageId_postId"; publish() stored
+    // the bare media id (proven live: "Invalid post_id format: '1221…'").
+    // Complete it here so permalink backfill stops erroring every retry.
+    let id = postId;
+    if (!id.includes("_")) {
+      try {
+        id = `${await this.resolvePageId()}_${postId}`;
+      } catch { /* keep raw id — the call will fail as before, cooldown parks it */ }
+    }
+    const res = await composio.execute("FACEBOOK_GET_POST", { post_id: id });
     return {
       postId,
       state: res.ok ? "published" : "unknown",
@@ -130,7 +139,13 @@ export class FacebookAdapter implements SocialProvider {
   }
 
   async getAnalytics(postId: string): Promise<PostAnalytics> {
-    const res = await composio.execute("FACEBOOK_GET_POST_INSIGHTS", { post_id: postId });
+    let id = postId;
+    if (!id.includes("_")) {
+      try {
+        id = `${await this.resolvePageId()}_${postId}`;
+      } catch { /* raw id, same graceful failure */ }
+    }
+    const res = await composio.execute("FACEBOOK_GET_POST_INSIGHTS", { post_id: id });
     const metrics: Record<string, number> = {};
     for (const r of res.data?.data ?? []) {
       const v = r?.values?.[0]?.value;
