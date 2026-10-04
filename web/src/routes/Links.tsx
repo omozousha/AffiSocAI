@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { useToast } from "../components/ui/toast";
+import { confirmDlg } from "../components/ui/confirm";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Input, Select, Textarea } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
@@ -30,7 +32,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
   const [links, setLinks] = useState<LinkRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [toast, setToast] = useState("");
+  const { toast } = useToast();
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("new");
   const [sel, setSel] = useState<Set<number>>(new Set());
@@ -63,11 +65,6 @@ export default function Links({ go }: { go: (r: string) => void }) {
     load();
   }, [load]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(""), 3000);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   const rows = useMemo(() => {
     const needle = q.toLowerCase().trim();
@@ -98,7 +95,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
   const doDry = async () => {
     const items = parseBlob();
     if (!items.length) {
-      setToast("isi link dulu");
+      toast("isi link dulu");
       return;
     }
     setFormBusy(true);
@@ -121,7 +118,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
   const doSave = async () => {
     const items = parseBlob();
     if (!items.length) {
-      setToast("isi link dulu");
+      toast("isi link dulu");
       return;
     }
     setFormBusy(true);
@@ -133,15 +130,15 @@ export default function Links({ go }: { go: (r: string) => void }) {
       });
       if (r.status >= 200 && r.status < 300) {
         const n = r.body.results?.filter((x) => x.status !== "rejected").length ?? items.length;
-        setToast(`${n} link tersimpan`);
+        toast(`${n} link tersimpan`);
         setBlob("");
         setDryOut("");
         load();
       } else {
-        setToast(r.body.error || "gagal menyimpan");
+        toast(r.body.error || "gagal menyimpan");
       }
     } catch (e) {
-      setToast(String(e));
+      toast(String(e));
     } finally {
       setFormBusy(false);
     }
@@ -156,13 +153,15 @@ export default function Links({ go }: { go: (r: string) => void }) {
           `/api/links/${id}/post`,
           { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
         );
-        setToast(r.status === 200 ? `terbit: ${r.body.platform} #${r.body.content_id}` : r.body.error || "posting gagal");
+        toast(r.status === 200 ? `terbit: ${r.body.platform} #${r.body.content_id}` : r.body.error || "posting gagal");
       } else if (act === "hapus") {
+        const okc = await confirmDlg({ title: `Hapus link #${id}?`, body: "Konten terkait ikut terhapus. Tidak bisa dibatalkan.", danger: true, okLabel: "Hapus" });
+        if (!okc) return;
         const r = await api<{ error?: string }>(`/api/links/${id}`, { method: "DELETE" });
-        setToast(r.status === 200 ? `link #${id} dihapus` : r.body.error || "gagal menghapus");
+        toast(r.status === 200 ? `link #${id} dihapus` : r.body.error || "gagal menghapus");
       } else if (act === "enrich") {
         const r = await api<{ error?: string }>(`/api/links/${id}/enrich`, { method: "POST" });
-        setToast(r.status === 200 ? `#${id} enriched` : r.body.error || "enrich gagal");
+        toast(r.status === 200 ? `#${id} enriched` : r.body.error || "enrich gagal");
       } else if (act === "recreate") {
         const r = await api<{ error?: string; jobId?: string; status?: string }>(`/api/links/${id}/recreate-image`, {
           method: "POST",
@@ -172,7 +171,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
         if (r.status === 202 && r.body.jobId) {
           // Flow async — poll until done
           const jobId = r.body.jobId;
-          setToast(`🍌 Flow generate dimulai — menunggu hasil…`);
+          toast(`🍌 Flow generate dimulai — menunggu hasil…`);
           const poll = async () => {
             for (let i = 0; i < 60; i++) {
               await new Promise(res => setTimeout(res, 5000));
@@ -181,12 +180,12 @@ export default function Links({ go }: { go: (r: string) => void }) {
                   `/api/links/${id}/recreate-image/status?jobId=${jobId}`
                 );
                 if (p.body.status === "running") {
-                  setToast(`🍌 Flow sedang generate… ${((i + 1) * 5)}s`);
+                  toast(`🍌 Flow sedang generate… ${((i + 1) * 5)}s`);
                   continue;
                 }
                 if (p.body.status === "done") {
                   const res = p.body.result;
-                  setToast(res?.ok && res?.live
+                  toast(res?.ok && res?.live
                     ? `✅ Flow berhasil (${res.backend}) — gambar #${id} diperbarui`
                     : res?.ok && !res?.live
                       ? `⚠️ Flow generate tapi gate reject — foto asli dipakai`
@@ -195,17 +194,17 @@ export default function Links({ go }: { go: (r: string) => void }) {
                   return;
                 }
                 if (p.body.status === "error") {
-                  setToast(`❌ Flow error: ${p.body.result?.error || "unknown"}`);
+                  toast(`❌ Flow error: ${p.body.result?.error || "unknown"}`);
                   return;
                 }
               } catch { /* ignore poll error, retry */ }
             }
-            setToast("⏱ Flow timeout — cek lagi nanti");
+            toast("⏱ Flow timeout — cek lagi nanti");
           };
           poll().finally(() => { setRowBusy(null); load(); });
           return; // skip the finally below — poll handles cleanup
         } else {
-          setToast(r.status === 200 ? `gambar #${id} dibuat ulang` : r.body.error || "recreate gagal");
+          toast(r.status === 200 ? `gambar #${id} dibuat ulang` : r.body.error || "recreate gagal");
         }
       } else if (act === "bio") {
         const r = await api<{ error?: string }>("/api/bio/publish", {
@@ -213,11 +212,11 @@ export default function Links({ go }: { go: (r: string) => void }) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ link_id: id }),
         });
-        setToast(r.status >= 200 && r.status < 300 ? `bio #${id} terbit` : r.body.error || "bio gagal");
+        toast(r.status >= 200 && r.status < 300 ? `bio #${id} terbit` : r.body.error || "bio gagal");
       }
       load();
     } catch (e) {
-      setToast(String(e));
+      toast(String(e));
     } finally {
       setRowBusy(null);
     }
@@ -259,13 +258,15 @@ export default function Links({ go }: { go: (r: string) => void }) {
     setPreview(null);
     setSel(new Set());
     setBulkBusy(false);
-    setToast(ok === previewIds.length ? `${ok} produk terbit` : `${ok}/${previewIds.length} terbit`);
+    toast(ok === previewIds.length ? `${ok} produk terbit` : `${ok}/${previewIds.length} terbit`);
     load();
   };
 
   const bulkDelete = async () => {
     const ids = [...sel];
     if (!ids.length) return;
+    const okc = await confirmDlg({ title: `Hapus ${ids.length} link?`, body: "Semua konten terkait ikut terhapus permanen.", danger: true, okLabel: "Hapus semua" });
+    if (!okc) return;
     setBulkBusy(true);
     let ok = 0;
     for (const id of ids) {
@@ -278,7 +279,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
     }
     setSel(new Set());
     setBulkBusy(false);
-    setToast(ok === ids.length ? `${ok} link dihapus` : `${ok}/${ids.length} dihapus`);
+    toast(ok === ids.length ? `${ok} link dihapus` : `${ok}/${ids.length} dihapus`);
     load();
   };
 
@@ -302,7 +303,6 @@ export default function Links({ go }: { go: (r: string) => void }) {
         </div>
       </div>
 
-      {toast && <p className="text-sm text-accent">{toast}</p>}
       {err && <p className="text-sm text-red-400">gagal: {err}</p>}
 
       <Card>

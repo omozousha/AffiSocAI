@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { useToast } from "../components/ui/toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Input, Select, Textarea } from "../components/ui/input";
 import { Spinner } from "../components/ui/spinner";
@@ -43,7 +44,7 @@ export default function Konten() {
   const [busy, setBusy] = useState(false);
   const [saveBusy, setSaveBusy] = useState<number | null>(null);
   const [postBusy, setPostBusy] = useState(false);
-  const [toast, setToast] = useState("");
+  const { toast } = useToast();
   const [rows, setRows] = useState<ContentRow[]>([]);
   const [fp, setFp] = useState("");
   const [fs, setFs] = useState("");
@@ -65,11 +66,6 @@ export default function Konten() {
     loadRows();
   }, [loadRows]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(""), 3000);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   const togglePlat = (p: string) => {
     setPlats((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
@@ -78,7 +74,7 @@ export default function Konten() {
   const doGen = async () => {
     const id = Number(linkId);
     if (!id) {
-      setToast("isikan Link ID dulu");
+      toast("isikan Link ID dulu");
       return;
     }
     setBusy(true);
@@ -92,14 +88,14 @@ export default function Konten() {
         },
       );
       if (r.status !== 200) {
-        setToast(r.body.error || "generate gagal");
+        toast(r.body.error || "generate gagal");
         return;
       }
       setDrafts(r.body.drafts || []);
       setBodies({});
-      setToast(`${(r.body.drafts || []).length} draft dibuat`);
+      toast(`${(r.body.drafts || []).length} draft dibuat`);
     } catch (e) {
-      setToast(String(e));
+      toast(String(e));
     } finally {
       setBusy(false);
     }
@@ -128,7 +124,7 @@ export default function Konten() {
     try {
       const r = await submitDraft(i);
       if (!r) return;
-      setToast(r.status === 200 || r.status === 201 ? "draft disimpan" : "simpan gagal");
+      toast(r.status === 200 || r.status === 201 ? "draft disimpan" : "simpan gagal");
       loadRows();
     } finally {
       setSaveBusy(null);
@@ -137,13 +133,13 @@ export default function Konten() {
 
   const saveAll = async () => {
     if (!drafts.length) {
-      setToast("belum ada draft");
+      toast("belum ada draft");
       return;
     }
     setBusy(true);
     try {
       for (let i = 0; i < drafts.length; i++) await submitDraft(i);
-      setToast(`${drafts.length} draft disimpan`);
+      toast(`${drafts.length} draft disimpan`);
     } finally {
       setBusy(false);
       loadRows();
@@ -163,9 +159,9 @@ export default function Konten() {
           body: JSON.stringify({ platform: confirmPost.platform }),
         },
       );
-      setToast(r.status === 200 ? `terbit: ${r.body.platform || confirmPost.platform}` : r.body.error || "posting gagal");
+      toast(r.status === 200 ? `terbit: ${r.body.platform || confirmPost.platform}` : r.body.error || "posting gagal");
     } catch (e) {
-      setToast(String(e));
+      toast(String(e));
     } finally {
       setPostBusy(false);
       setConfirmPost(null);
@@ -187,7 +183,6 @@ export default function Konten() {
         </Button>
       </div>
 
-      {toast && <p className="text-sm text-accent">{toast}</p>}
 
       <Card>
         <CardHeader>

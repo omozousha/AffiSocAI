@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, Clock, Plus } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { useToast } from "../components/ui/toast";
 import { Calendar } from "../components/ui/calendar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import {
@@ -72,7 +73,7 @@ export default function Jadwal() {
   const [open, setOpen] = useState(false);
   const [pickDate, setPickDate] = useState<Date | undefined>(undefined);
   const [jumpLabel, setJumpLabel] = useState("Besok");
-  const [toast, setToast] = useState("");
+  const { toast } = useToast();
   const [busyId, setBusyId] = useState<number | null>(null);
   const [savingTime, setSavingTime] = useState(false);
 
@@ -159,7 +160,7 @@ export default function Jadwal() {
         body: JSON.stringify({ slot_time: newHm.trim() }),
       });
       if (r.status !== 200) throw new Error((r.body as { error?: string }).error || "gagal simpan");
-      setToast(
+      toast(
         r.body.lands === "today"
           ? `jam ${newHm.trim()} masuk slot HARI INI — tick 60 detik jalan otomatis`
           : `jam ${newHm.trim()} masuk slot BESOK (waktu hari ini sudah lewat)`,
@@ -168,7 +169,7 @@ export default function Jadwal() {
       setOpen(false);
       await load();
     } catch (e) {
-      setToast(e instanceof Error ? e.message : String(e));
+      toast(e instanceof Error ? e.message : String(e));
     } finally {
       setSavingTime(false);
     }
@@ -312,7 +313,6 @@ export default function Jadwal() {
       </div>
 
       {err && <p className="text-sm text-red-400">gagal: {err}</p>}
-      {toast && <p className="text-sm text-accent">{toast}</p>}
 
       <Card>
         <CardHeader>

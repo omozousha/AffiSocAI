@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { useToast } from "../components/ui/toast";
+import { confirmDlg } from "../components/ui/confirm";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Input, Select, Textarea } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
@@ -19,7 +21,7 @@ const OPS = ["textPost", "imagePost", "videoPost", "carouselPost", "scheduledPos
 export default function Sosmed() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState("");
+  const { toast } = useToast();
   const [text, setText] = useState("test post from AffiSocAI");
   const [mediaUrl, setMediaUrl] = useState("");
   const [mediaKind, setMediaKind] = useState("image");
@@ -55,11 +57,6 @@ export default function Sosmed() {
     refreshFlow();
   }, [refresh, refreshFlow]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(""), 3000);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   const composer = () => ({
     text: text || "test post from AffiSocAI",
@@ -72,10 +69,10 @@ export default function Sosmed() {
     try {
       const r = await fn();
       setLastOut(JSON.stringify({ status: r.status, body: r.body }, null, 2));
-      setToast(r.status >= 200 && r.status < 300 ? okMsg : ((r.body as { error?: string }).error || "gagal"));
+      toast(r.status >= 200 && r.status < 300 ? okMsg : ((r.body as { error?: string }).error || "gagal"));
       await refresh();
     } catch (e) {
-      setToast(String(e));
+      toast(String(e));
     } finally {
       setBusyKey("");
     }
@@ -100,7 +97,6 @@ export default function Sosmed() {
         </Button>
       </div>
 
-      {toast && <p className="text-sm text-accent">{toast}</p>}
 
       <Card>
         <CardHeader>
@@ -180,9 +176,9 @@ export default function Sosmed() {
                           );
                           if (r.status === 200 && r.body.url) {
                             window.open(r.body.url, "_blank", "noopener");
-                            setToast("tab otorisasi Threads dibuka");
+                            toast("tab otorisasi Threads dibuka");
                           } else {
-                            setToast(r.body.error || "gagal minta URL otorisasi");
+                            toast(r.body.error || "gagal minta URL otorisasi");
                           }
                         }}
                       >
@@ -328,13 +324,13 @@ export default function Sosmed() {
                     { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
                   );
                   if (r.status === 200) {
-                    setToast(`Flow: ${r.body.count} cookies disimpan · expire ${r.body.earliestExpiry}`);
+                    toast(`Flow: ${r.body.count} cookies disimpan · expire ${r.body.earliestExpiry}`);
                     await refreshFlow();
                   } else {
-                    setToast(r.body.error || "gagal import cookies");
+                    toast(r.body.error || "gagal import cookies");
                   }
                 } catch (err) {
-                  setToast(`Error: ${String(err)}`);
+                  toast(`Error: ${String(err)}`);
                 } finally {
                   setFlowBusy(false);
                   if (fileRef.current) fileRef.current.value = "";
@@ -359,8 +355,10 @@ export default function Sosmed() {
                 onClick={async () => {
                   setFlowBusy(true);
                   try {
+                    const okc = await confirmDlg({ title: "Hapus sesi Flow?", body: "Harus import cookie Chrome lagi untuk generate via Flow.", danger: true, okLabel: "Hapus" });
+                    if (!okc) return;
                     await api("/api/flow/cookies", { method: "DELETE" });
-                    setToast("Flow session dihapus");
+                    toast("Flow session dihapus");
                     await refreshFlow();
                   } finally {
                     setFlowBusy(false);

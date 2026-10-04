@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { Button } from "./components/ui/button";
 import { Skeleton } from "./components/ui/skeleton";
+import { ToastProvider } from "./components/ui/toast";
+import { ConfirmHost } from "./components/ui/confirm";
 import Dashboard from "./routes/Dashboard";
 import Login from "./routes/Login";
 import Jadwal from "./routes/Jadwal";
@@ -240,5 +242,10 @@ export default function App() {
       </div>
     );
   if (!user) return <Login onLogin={setUser} />;
-  return <AppShell user={user} onLogout={logout} />;
+  return (
+    <ToastProvider>
+      <AppShell user={user} onLogout={logout} />
+      <ConfirmHost />
+    </ToastProvider>
+  );
 }
