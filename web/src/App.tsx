@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "./components/ui/button";
+import { Skeleton } from "./components/ui/skeleton";
 import Dashboard from "./routes/Dashboard";
 import Login from "./routes/Login";
 import Jadwal from "./routes/Jadwal";
@@ -217,7 +218,24 @@ export default function App() {
     setUser(null);
   };
 
-  if (checking) return null;
+  if (checking)
+    return (
+      // Reviewer/operator must never see a black screen while /api/session answers.
+      <div className="flex min-h-screen bg-zinc-950 text-zinc-100" aria-busy="true" aria-label="Memuat">
+        <div className="hidden w-52 shrink-0 flex-col gap-3 border-r border-zinc-800 p-4 md:flex">
+          <Skeleton className="h-6 w-32" />
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-full" />
+          ))}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-4 p-6">
+          <Skeleton className="h-6 w-64" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-11/12" />
+          <Skeleton className="h-4 w-9/12" />
+        </div>
+      </div>
+    );
   if (!user) return <Login onLogin={setUser} />;
   return <AppShell user={user} onLogout={logout} />;
 }
