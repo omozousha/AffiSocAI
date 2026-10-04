@@ -964,17 +964,29 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
   return { ran, created, warmed };
 }
 
+// Per-content cooldown for PERMANENT-FAIL permalink checks (proven: 5 Facebook
+// rows with bare-numeric ids rejected by FACEBOOK_GET_POST "Invalid post_id
+// format" retried every 60s tick = 300 composio CLI spawns/hour, 90% CPU each —
+// this alone pinned the VPS at load 10+). A miss is parked for 30 min and
+// retried later (IG permalinks legitimately appear minutes late); on restart
+// the map resets — fine, that is just one backfill burst.
+const permalinkFailCooldown = new Map<number, number>();
+const PERMALINK_RETRY_MS = 30 * 60 * 1000;
+
 async function backfillPermalinks(): Promise<void> {
   const { listContent, setContentPostUrl, setLinkPublishedUrl } = await import("./store.ts");
+  const now = Date.now();
   const missing = listContent()
     .filter((c) => c.status === "published" && c.post_id && !c.post_url)
     .sort((a, b) => b.id - a.id)
+    .filter((c) => now - (permalinkFailCooldown.get(c.id) ?? 0) > PERMALINK_RETRY_MS)
     .slice(0, 5);
   for (const c of missing.slice(0, 5)) {
     const p = getProvider(c.platform);
     if (!p?.getPostStatus) continue;
     const st = await p.getPostStatus(c.post_id!);
     const perma = st.detail && /^https?:\/\//.test(st.detail) ? st.detail : null;
+    if (!perma) permalinkFailCooldown.set(c.id, now);
     if (perma) {
       setContentPostUrl(c.id, perma);
       if (c.link_id) setLinkPublishedUrl(c.link_id, perma);
