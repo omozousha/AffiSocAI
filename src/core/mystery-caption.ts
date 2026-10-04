@@ -156,7 +156,9 @@ export function buildMysteryCaption(
   // Hashtag line = topic tags for the product category + top-3 trending
   // (newsjack). Trends come from the scheduler prefetch cache; empty cache =
   // same behavior as before this feature.
-  const trending = cachedTrends(3).map((t) => t.tag);
+  // dedupe AFTER cameljoin: "India vs Brazil"/"India vs Brasil" normalize to
+  // distinct spellings upstream but can collide here; keep unique tags only.
+  const trending = Array.from(new Set(cachedTrends(5).map((t) => t.tag))).filter(Boolean).slice(0, 3);
   const tags = [...tagsFor(type), ...trending.filter((tg) => !tagsFor(type).includes(tg))];
   const constraints: string[] = [];
 

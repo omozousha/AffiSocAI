@@ -197,6 +197,7 @@ FIDELITY LOCK (absolute, highest priority — overrides everything below):
 - The product must be pixel-faithful to the reference: identical silhouette, identical shape and proportions, identical part count, identical colors and color placement, identical materials and surface texture, identical seams/holes/buttons/ports/straps/edges, identical printed text and label positions where legible.
 - Do not redesign, restyle, resize, re-angle, re-brand, simplify, embellish, merge, split, mirror-flip, or invent ANY feature of the product. Do not add parts the reference does not show; do not remove parts the reference shows.
 - Same product type and same viewing angle family as the reference. If the reference shows one object, output exactly one object — never a different object, even one of the same category.
+- THE ONE FIDELITY EXCEPTION (operator rule — brand must not be readable): REMOVE brand wordmarks, logos and brand names printed/embossed on the product body itself — replace the marking area with plain same-color surface or a generic unbranded mark. Everything else stays identical. No text may be readable anywhere in the final photo.
 - When in doubt between making the image prettier and keeping the product exact: keep the product exact.
 
 STYLING (what you ARE allowed to improve):
