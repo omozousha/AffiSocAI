@@ -170,6 +170,10 @@ export async function recreateProductImage(
   const refs = [link.image_original, link.image_url].filter((u): u is string => !!u);
   let source: Buffer | null = null;
   let refUsed: string | null = null;
+  // Hoisted so the review-gate retry loop below can re-issue the same img2img
+  // call with a stricter directive.
+  let img2imgPrompt = prompt;
+  let remoteRef: string | null = null;
   for (const ref of refs) {
     source = await fetchSource(ref);
     if (source) { refUsed = ref; break; }
@@ -215,10 +219,10 @@ export async function recreateProductImage(
       //    URL reference the model sometimes invents a random object (proven:
       //    pump -> guitar). Prefixing the product name into the img2img prompt
       //    got a mimo-vision YES on the identical payload (proven live).
-      const img2imgPrompt = label && !prompt.includes(label)
+      img2imgPrompt = label && !prompt.includes(label)
         ? `The product in the reference photo is: ${label}. It must remain the exact main subject.\n\n${prompt}`
         : prompt;
-      const remoteRef = (refUsed && /^https?:\/\//.test(refUsed)) ? refUsed : dataUri;
+      remoteRef = (refUsed && /^https?:\/\//.test(refUsed)) ? refUsed : dataUri;
       for (let attempt = 1; attempt <= 2 && !result; attempt++) {
         try {
           result = await recreateImage(remoteRef, img2imgPrompt);
@@ -268,10 +272,10 @@ export async function recreateProductImage(
     }
   }
 
-  const ext = result.mime === "image/png" ? "png" : result.mime === "image/webp" ? "webp" : "jpg";
-  const file = `link-${link.id}-${Date.now()}.${ext}`;
+  let ext = result.mime === "image/png" ? "png" : result.mime === "image/webp" ? "webp" : "jpg";
+  let file = `link-${link.id}-${Date.now()}.${ext}`;
   const path = join(IMAGE_DIR, file);
-  const buf = Buffer.from(result.bytes);
+  let buf = Buffer.from(result.bytes);
   await writeFile(path, buf);
 
   // REVIEW GATE: vision check on router2nd is reliable again (HTTP 200).
@@ -289,18 +293,62 @@ export async function recreateProductImage(
   // only briefly flaky.
   const requireGate = process.env.AFFILIATE_REQUIRE_GATE === "1";
   const infraFail = /review-infra-fail/.test(review.reason || "");
-  const live =
+
+  // P2.9: a content REJECT (not infra) gets bounded regeneration — the model
+  // invents detail non-deterministically, so a second draw often passes.
+  // Proven 2026-10-04: link26 rejected {is_match .92, safe .56} for a melted
+  // headband; the directive below targets exactly that failure class.
+  // Cost control: AFFILIATE_REGEN_RETRY (default 2, 0 disables). Each attempt
+  // is one router call (~20-60s) + one vision review — acceptable pre-due.
+  let finalReview = review;
+  let finalLive =
     review.approved ||
     (process.env.AFFILIATE_REVIEW_BYPASS === "1" && !requireGate) ||
     (infraFail && !requireGate);
+  const maxRetries = Math.min(2, Number(process.env.AFFILIATE_REGEN_RETRY ?? 2) || 0);
+  if (!finalLive && !infraFail && backend === "router" && source && remoteRef) {
+    for (let attempt = 1; attempt <= maxRetries && !finalLive; attempt++) {
+      const directive =
+        `STRICT REDRAW (attempt ${attempt}): the previous render had deformed product parts. ` +
+        `Reproduce ONLY the exact object from the reference photo — identical silhouette, ` +
+        `straps, buttons and count of every component; zero invented parts, no melting or ` +
+        `floating elements. `;
+      const retryPrompt = directive + img2imgPrompt;
+      try {
+        const retry = await recreateImage(remoteRef!, retryPrompt);
+        const rbuf = Buffer.from(retry.bytes);
+        const rfile = `link-${link.id}-${Date.now()}-r${attempt}.${retry.mime === "image/png" ? "png" : retry.mime === "image/webp" ? "webp" : "jpg"}`;
+        await writeFile(join(IMAGE_DIR, rfile), rbuf);
+        const rr = await reviewCreative(link.product || "", rbuf, { backend: `router-retry-${attempt}`, byteLen: rbuf.length });
+        logActivity({
+          level: rr.approved ? "info" : "warn",
+          source: "image",
+          event: "recreate.retry",
+          message: `link ${link.id} regen ${attempt}/${maxRetries}: ${rr.approved ? "APPROVED" : "still REJECT"} (${rr.reason.slice(0, 90)})`,
+          meta: { link_id: link.id, attempt, approved: rr.approved },
+        });
+        if (rr.approved) {
+          buf = rbuf;
+          file = rfile;
+          finalReview = rr;
+          finalLive = true;
+        } else if (attempt === maxRetries) {
+          finalReview = rr;
+        }
+      } catch (e) {
+        logActivity({ level: "warn", source: "image", event: "recreate.retry", message: `link ${link.id} regen ${attempt} failed: ${String(e).slice(0, 120)}`, meta: { link_id: link.id, attempt } });
+      }
+    }
+  }
+  const live = finalLive;
   if (live) {
     try {
-      updateLinkImage(link.id, served);
+      updateLinkImage(link.id, `/api/images/${file}`);
     } catch (e) {
       console.error("[recreate] could not persist image_url:", String(e).slice(0, 200));
     }
   } else {
-    console.warn(`[recreate] review ${infraFail ? "INFRA-FAIL (gate required)" : "REJECT"} link ${link.id} (${backend}): ${review.reason} — file kept, original photo stays live`);
+    console.warn(`[recreate] review ${infraFail ? "INFRA-FAIL (gate required)" : "REJECT"} link ${link.id} (${backend}): ${finalReview.reason} — file kept, original photo stays live`);
   }
 
   return {
