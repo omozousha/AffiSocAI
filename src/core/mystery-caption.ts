@@ -124,8 +124,21 @@ export function topicFor(type: string): string | null {
   return m[type] ?? null;
 }
 
-function threadsMystery(hook: HookVariant): string {
-  return hook.open;
+// Threads budget: 500 chars INCLUDING the short link line the publish paths
+// append later (~35). Full shape = hook + one educational sentence + CTA,
+// trimmed down gracefully until it fits.
+const THREADS_BUDGET = 460;
+
+function threadsMystery(hook: HookVariant, tags: string[]): string {
+  const whyOne = hook.why.split(/\.\s+/)[0] + ".";
+  const ctaShort = hook.cta.split(/\bLink di bio\b/)[0].trim();
+  const ladder = [
+    `${hook.open}\n\n${whyOne}\n\n${ctaShort}\n\n${BIO_LINE}\n\n${tags.join(" ")}`,
+    `${hook.open}\n\n${whyOne}\n\n${BIO_LINE}\n\n${tags.join(" ")}`,
+    `${hook.open}\n\n${BIO_LINE}\n\n${tags.join(" ")}`,
+    `${hook.open}\n\n${BIO_LINE}`,
+  ];
+  return ladder.find((b) => b.length <= THREADS_BUDGET) ?? ladder[ladder.length - 1];
 }
 
 export function buildMysteryCaption(
@@ -156,7 +169,7 @@ export function buildMysteryCaption(
     // caption text — the composer's topic picker is metadata, not words.
     topic = topicFor(type);
     hashtags = tags;
-    body = `${hook.open}\n\n${BIO_LINE}\n\n${hashtags.join(" ")}`;
+    body = threadsMystery(hook, tags);
   } else if (platform === "instagram") {
     hashtags = tags;
     body = igMystery(hook, tags);
@@ -165,7 +178,7 @@ export function buildMysteryCaption(
     body = fbMystery(hook, tags);
   } else {
     hashtags = tags;
-    body = threadsMystery(hook);
+    body = threadsMystery(hook, tags);
   }
 
   if (body.length > CHAR_LIMIT[platform]) {
