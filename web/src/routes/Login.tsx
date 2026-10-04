@@ -39,27 +39,41 @@ export default function Login({ onLogin }: { onLogin: (user: string) => void }) 
       >
         <div className="text-lg font-bold">
           AffiSoc<span className="text-emerald-300">AI</span>
-          <div className="text-xs font-normal text-zinc-500">Login operator</div>
+          <div className="text-xs font-normal text-zinc-500">Masuk operator</div>
         </div>
-        <input
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-          placeholder="Username"
-          autoCapitalize="none"
-          autoCorrect="off"
-          value={user}
-          onChange={(e) => setUser(e.target.value)}
-        />
-        <input
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-          placeholder="Password"
-          type="password"
-          autoCapitalize="none"
-          autoCorrect="off"
-          value={pass}
-          onChange={(e) => setPass(e.target.value)}
-        />
-        {err && <div className="rounded-lg bg-red-950 px-3 py-2 text-xs text-red-300">{err}</div>}
-        <Button type="submit" size="sm" className="w-full" disabled={busy || !user || !pass}>
+        <label htmlFor="login-user" className="block text-sm font-medium text-zinc-300">
+          Nama pengguna
+          <input
+            id="login-user"
+            name="username"
+            className="mt-1 min-h-[44px] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+            autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            value={user}
+            onChange={(e) => setUser(e.target.value)}
+          />
+        </label>
+        <label htmlFor="login-pass" className="block text-sm font-medium text-zinc-300">
+          Kata sandi
+          <input
+            id="login-pass"
+            name="password"
+            type="password"
+            className="mt-1 min-h-[44px] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+            autoComplete="current-password"
+            autoCapitalize="none"
+            autoCorrect="off"
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+          />
+        </label>
+        {err && (
+          <div role="alert" aria-live="polite" className="rounded-lg bg-red-950 px-3 py-2 text-sm text-red-300">
+            {err}
+          </div>
+        )}
+        <Button type="submit" size="sm" className="min-h-[44px] w-full text-sm" disabled={busy || !user || !pass}>
           {busy ? "Memeriksa…" : "Masuk"}
         </Button>
       </form>
