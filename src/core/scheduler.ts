@@ -193,16 +193,37 @@ function utcStamp(d: Date): string {
 export function ensureSlots(now = new Date()): number {
   const day = dayKey(now);
   const times = slotTimes();
-  const ins = db.prepare(
-    `INSERT INTO post_slots (slot_date, slot_index, scheduled_for)
-     VALUES (?, ?, ?)
-     ON CONFLICT(slot_date, slot_index) DO NOTHING`,
-  );
+  const want = new Set(times.map((t) => utcStamp(atTime(day, t))));
+  const existing = db
+    .prepare(`SELECT id, scheduled_for, status FROM post_slots WHERE slot_date = ? ORDER BY slot_index`)
+    .all(day) as { id: number; scheduled_for: string; status: string }[];
+  const nowStamp = utcStamp(now);
   let created = 0;
-  for (let i = 0; i < times.length; i++) {
-    const when = atTime(day, times[i]!);
-    const r = ins.run(day, i, utcStamp(when));
-    created += r.changes ?? 0;
+
+  // Insert wanted times that have NO row yet (uniqueness is (date,index);
+  // index order used to drift when slot_times changed, leaving two rows for
+  // 21:40 and a stale 17:50 — proven live 2026-10-04. Key on the TIME now).
+  const have = new Set(existing.map((e) => e.scheduled_for));
+  for (const w of [...want]) {
+    if (have.has(w)) continue;
+    const maxIdx = (db.prepare(`SELECT COALESCE(MAX(slot_index),-1) m FROM post_slots WHERE slot_date = ?`).get(day) as { m: number }).m;
+    created += db.prepare(`INSERT INTO post_slots (slot_date, slot_index, scheduled_for) VALUES (?,?,?)`).run(day, maxIdx + 1, w).changes ?? 0;
+  }
+
+  // Prune PENDING rows that don't match the wanted pattern: duplicates of the
+  // same time (keep lowest id) and stale future times from an older pattern.
+  // Past-due / claimed / published rows are never touched.
+  const seen = new Set<string>();
+  for (const e of existing) {
+    if (e.status !== "pending") continue;
+    const stale = !want.has(e.scheduled_for) && e.scheduled_for > nowStamp;
+    const dup = seen.has(e.scheduled_for);
+    if (stale || dup) {
+      db.prepare(`DELETE FROM post_slots WHERE id = ?`).run(e.id);
+      created -= 0; // pruning, not creation
+      continue;
+    }
+    seen.add(e.scheduled_for);
   }
   return created;
 }
