@@ -1,31 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { CalendarDays, Clock, Plus } from "lucide-react";
+import { CalendarDays, Plus } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
 import { Calendar } from "../components/ui/calendar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "../components/ui/dialog";
-import { Input } from "../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Skeleton } from "../components/ui/skeleton";
-import { Spinner } from "../components/ui/spinner";
 import { api } from "../lib/utils";
-import {
-  PLAT_LABEL,
-  STATUS_LABEL,
-  STATUS_VARIANT,
-  wibHm,
-  type BadgeVariant,
-  type Slot,
-} from "../lib/format";
+import { wibHm, type Slot } from "../lib/format";
+import { AddTimeDialog } from "./jadwal/AddTimeDialog";
+import { SlotRow } from "./jadwal/SlotRow";
 
 interface StatusBody {
   enabled: boolean;
@@ -51,15 +36,6 @@ interface SchedBody {
 
 interface HealthBody {
   ok: boolean;
-}
-
-function platBadge(n: string) {
-  const known = n === "instagram" || n === "facebook" || n === "threads";
-  return (
-    <Badge key={n} variant={known ? "default" : "outline"}>
-      {PLAT_LABEL[n] || n}
-    </Badge>
-  );
 }
 
 export default function Jadwal() {
@@ -248,64 +224,20 @@ export default function Jadwal() {
               <Calendar mode="single" selected={pickDate} onSelect={jumpDate} />
             </PopoverContent>
           </Popover>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="mr-1 h-4 w-4" />
-                Tambah jam
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Tambah jam posting</DialogTitle>
-                <DialogDescription>
-                  Jam yang masih di depan hari ini masuk slot hari ini, yang sudah
-                  lewat masuk besok. Maksimal 6 jam.
-                </DialogDescription>
-              </DialogHeader>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="flex items-center gap-1 text-muted">
-                  <Clock className="h-3.5 w-3.5" /> Jam (WIB)
-                </span>
-                <Input
-                  value={newHm}
-                  inputMode="numeric"
-                  placeholder="cth 19:30"
-                  maxLength={5}
-                  onChange={(e) => {
-                    let v = e.target.value.replace(/[^0-9]/g, "").slice(0, 4);
-                    if (v.length > 2) v = v.slice(0, 2) + ":" + v.slice(2);
-                    setNewHm(v);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") addTime();
-                  }}
-                  aria-label="Jam baru HH:MM"
-                />
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {["07:30", "12:00", "17:50", "19:30"].map((t) => (
-                  <Button key={t} variant="outline" size="sm" onClick={() => setNewHm(t)}>
-                    {t}
-                  </Button>
-                ))}
-              </div>
-              {hmValid && (
-                <p className="text-sm text-accent">
-                  masuk slot {landsPreview(newHm.trim()) === "today" ? "HARI INI" : "BESOK"}
-                  {landsPreview(newHm.trim()) === "tomorrow" ? " (waktu hari ini sudah lewat)" : " — tick 60 detik jalan otomatis"}
-                </p>
-              )}
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setOpen(false)}>
-                  Batal
-                </Button>
-                <Button onClick={addTime} disabled={!hmValid || savingTime}>
-                  {savingTime ? <Spinner label="Simpan…" /> : "Tambah"}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <Button size="sm" onClick={() => setOpen(true)}>
+            <Plus className="mr-1 h-4 w-4" />
+            Tambah jam
+          </Button>
+          <AddTimeDialog
+            open={open}
+            onOpenChange={setOpen}
+            value={newHm}
+            onValue={setNewHm}
+            valid={hmValid}
+            saving={savingTime}
+            lands={landsPreview}
+            onAdd={addTime}
+          />
           <Button variant="ghost" size="sm" onClick={load}>
             Muat ulang
           </Button>
@@ -335,61 +267,9 @@ export default function Jadwal() {
               <Skeleton className="h-16" />
             </>
           ) : slots.length ? (
-            slots.map((s) => {
-              const locked = s.status === "published";
-              return (
-                <div
-                  key={s.id}
-                  className={`md:grid md:grid-cols-[3.5rem_minmax(0,1fr)_auto] md:items-center md:gap-3 flex items-center gap-3 rounded-md border p-3 ${
-                    s.id === nextId ? "border-accent" : "border-line"
-                  }`}
-                >
-                  <div className="w-14 flex-none text-lg font-bold">
-                    {wibHm(s.scheduled_for)}
-                    <span className="block text-[10px] font-normal text-muted">WIB</span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium" title={`Slot ${s.slot_index + 1} · ${s.link_id != null ? "link " + s.link_id : "link otomatis"}`}>
-                      Slot {s.slot_index + 1} · {s.link_id != null ? `link ${s.link_id}` : "link otomatis"}
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-1">
-                      <Badge variant={(STATUS_VARIANT[s.status] ?? "outline") as BadgeVariant}>
-                        {STATUS_LABEL[s.status] ?? s.status}
-                      </Badge>
-                      {String(s.platform || "")
-                        .split(",")
-                        .map((x) => x.trim())
-                        .filter(Boolean)
-                        .map(platBadge)}
-                    </div>
-                    {(s as { post_id?: string | number }).post_id && (
-                      <div className="mt-1 text-xs text-muted">
-                        post {String((s as { post_id?: string }).post_id).slice(0, 24)}
-                      </div>
-                    )}
-                    {(s as { error?: string }).error && (
-                      <div className="mt-1 text-xs text-red-400">
-                        {(s as { error?: string }).error?.slice(0, 200)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="md:justify-self-end">
-                    {locked ? (
-                      <span title="sudah terbit, terkunci">🔒</span>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant={s.status === "failed" ? "secondary" : "default"}
-                        disabled={busyId === s.id}
-                        onClick={() => runSlot(s.id)}
-                      >
-                        {busyId === s.id ? <Spinner label={s.status === "failed" ? "Coba…" : "Jalan…"} /> : s.status === "failed" ? "Coba lagi" : "Jalankan"}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
-            })
+            slots.map((s) => (
+              <SlotRow key={s.id} s={s} isNext={s.id === nextId} busyId={busyId} onRun={runSlot} />
+            ))
           ) : (
             <p className="text-sm text-muted">belum ada slot hari ini.</p>
           )}
@@ -458,25 +338,7 @@ export default function Jadwal() {
             <Skeleton className="h-14" />
           ) : tomorrow.length ? (
             tomorrow.map((s) => (
-              <div key={s.id} className="md:grid md:grid-cols-[3.5rem_minmax(0,1fr)_auto] md:items-center md:gap-3 flex items-center gap-3 rounded-md border border-line p-3">
-                <div className="w-14 flex-none text-lg font-bold">
-                  {wibHm(s.scheduled_for)}
-                  <span className="block text-[10px] font-normal text-muted">WIB</span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium" title={`Slot ${s.slot_index + 1}`}>Slot {s.slot_index + 1}</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1">
-                    <Badge variant={(STATUS_VARIANT[s.status] ?? "outline") as BadgeVariant}>
-                      {STATUS_LABEL[s.status] ?? s.status}
-                    </Badge>
-                    {String(s.platform || "")
-                      .split(",")
-                      .map((x) => x.trim())
-                      .filter(Boolean)
-                      .map(platBadge)}
-                  </div>
-                </div>
-              </div>
+              <SlotRow key={s.id} s={s} compact />
             ))
           ) : (
             <p className="text-sm text-muted">belum ada slot besok.</p>
