@@ -3,19 +3,13 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Input, Select, Textarea } from "../components/ui/input";
+import { Input, Select } from "../components/ui/input";
 import { Spinner } from "../components/ui/spinner";
+import { Empty } from "../components/ui/empty";
 import { api } from "../lib/utils";
+import { DraftCard, PostConfirmModal, type Draft } from "./konten/DraftCard";
 
 const POST_PLATS = ["instagram", "facebook", "threads"];
-
-interface Draft {
-  platform: string;
-  kind: string;
-  body: string;
-  media_url?: string;
-  needsMedia?: boolean;
-}
 
 interface ContentRow {
   id: number;
@@ -30,8 +24,6 @@ interface LinkOpt {
   product?: string;
   short_url?: string;
 }
-
-const LIMITS: Record<string, number> = { instagram: 2200, facebook: 60000, threads: 500 };
 
 export default function Konten() {
   const [linkOpts, setLinkOpts] = useState<LinkOpt[]>([]);
@@ -66,7 +58,6 @@ export default function Konten() {
     loadRows();
   }, [loadRows]);
 
-
   const togglePlat = (p: string) => {
     setPlats((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
   };
@@ -74,7 +65,7 @@ export default function Konten() {
   const doGen = async () => {
     const id = Number(linkId);
     if (!id) {
-      toast("isikan Link ID dulu");
+      toast("isikan Link ID dulu", "err");
       return;
     }
     setBusy(true);
@@ -88,14 +79,14 @@ export default function Konten() {
         },
       );
       if (r.status !== 200) {
-        toast(r.body.error || "generate gagal");
+        toast(r.body.error || "generate gagal", "err");
         return;
       }
       setDrafts(r.body.drafts || []);
       setBodies({});
       toast(`${(r.body.drafts || []).length} draft dibuat`);
     } catch (e) {
-      toast(String(e));
+      toast(String(e), "err");
     } finally {
       setBusy(false);
     }
@@ -124,7 +115,8 @@ export default function Konten() {
     try {
       const r = await submitDraft(i);
       if (!r) return;
-      toast(r.status === 200 || r.status === 201 ? "draft disimpan" : "simpan gagal");
+      const ok = r.status === 200 || r.status === 201;
+      toast(ok ? "draft disimpan" : "simpan gagal", ok ? "ok" : "err");
       loadRows();
     } finally {
       setSaveBusy(null);
@@ -133,7 +125,7 @@ export default function Konten() {
 
   const saveAll = async () => {
     if (!drafts.length) {
-      toast("belum ada draft");
+      toast("belum ada draft", "err");
       return;
     }
     setBusy(true);
@@ -159,9 +151,10 @@ export default function Konten() {
           body: JSON.stringify({ platform: confirmPost.platform }),
         },
       );
-      toast(r.status === 200 ? `terbit: ${r.body.platform || confirmPost.platform}` : r.body.error || "posting gagal");
+      const ok = r.status === 200;
+      toast(ok ? `terbit: ${r.body.platform || confirmPost.platform}` : r.body.error || "posting gagal", ok ? "ok" : "err");
     } catch (e) {
-      toast(String(e));
+      toast(String(e), "err");
     } finally {
       setPostBusy(false);
       setConfirmPost(null);
@@ -183,7 +176,6 @@ export default function Konten() {
         </Button>
       </div>
 
-
       <Card>
         <CardHeader>
           <div>
@@ -193,13 +185,7 @@ export default function Konten() {
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           <div className="flex flex-wrap gap-2">
-            <Input
-              value={linkId}
-              onChange={(e) => setLinkId(e.target.value)}
-              placeholder="Link ID (mis. 15)"
-              inputMode="numeric"
-              className="w-36"
-            />
+            <Input value={linkId} onChange={(e) => setLinkId(e.target.value)} placeholder="Link ID (mis. 15)" inputMode="numeric" className="w-36" />
             <Select
               value={linkOpts.some((l) => String(l.id) === linkId) ? linkId : ""}
               onChange={(e) => setLinkId(e.target.value)}
@@ -233,44 +219,17 @@ export default function Konten() {
               {busy ? <Spinner label="Simpan…" /> : "Simpan semua draft"}
             </Button>
           </div>
-          {drafts.map((d, i) => {
-            const body = bodies[i] ?? d.body;
-            const limit = LIMITS[d.platform] ?? 99999;
-            return (
-              <div key={i} className="flex gap-2 rounded-md border border-line p-2">
-                {d.media_url ? (
-                  <img src={d.media_url} alt="" className="h-16 w-16 flex-none rounded object-cover" />
-                ) : (
-                  <span className="h-16 w-16 flex-none rounded bg-elev" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1 text-sm font-medium">
-                    {d.platform}
-                    <Badge variant="outline">{d.kind}</Badge>
-                  </div>
-                  <Textarea
-                    value={body}
-                    onChange={(e) => setBodies((prev) => ({ ...prev, [i]: e.target.value }))}
-                    className="mt-1"
-                  />
-                  <p className={`text-xs ${body.length > limit ? "text-red-400" : "text-muted"}`}>
-                    {body.length}/{limit} karakter{d.needsMedia ? " · butuh gambar" : " · link di bio"}
-                  </p>
-                  <div className="mt-1 flex gap-1">
-                    <Button size="sm" variant="secondary" disabled={saveBusy === i} onClick={() => saveOne(i)}>
-                      {saveBusy === i ? <Spinner label="Simpan…" /> : "Simpan draft ini"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => setConfirmPost({ i, platform: d.platform, body })}
-                    >
-                      Posting
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {drafts.map((d, i) => (
+            <DraftCard
+              key={i}
+              d={d}
+              body={bodies[i] ?? d.body}
+              onBody={(v) => setBodies((prev) => ({ ...prev, [i]: v }))}
+              saveBusy={saveBusy === i}
+              onSave={() => saveOne(i)}
+              onPost={() => setConfirmPost({ i, platform: d.platform, body: bodies[i] ?? d.body })}
+            />
+          ))}
         </CardContent>
       </Card>
 
@@ -298,50 +257,40 @@ export default function Konten() {
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           {!filtered.length ? (
-            <p className="text-sm text-muted">belum ada konten tersimpan</p>
+            <Empty title="Belum ada konten" desc="Generate caption di atas, lalu simpan sebagai draft — posting terjadwal memakainya." />
           ) : (
             <>
-            {filtered.slice(0, cap).map((c) => (
-              <div key={c.id} className="rounded-md border border-line p-2">
-                <div className="flex items-center gap-1 text-sm font-medium">
-                  {c.platform}
-                  <Badge variant={c.status === "draft" ? "secondary" : "default"}>{c.status}</Badge>
-                  <Badge variant="outline">link {c.link_id}</Badge>
+              {filtered.slice(0, cap).map((c) => (
+                <div key={c.id} className="rounded-md border border-line p-2">
+                  <div className="flex items-center gap-1 text-sm font-medium">
+                    {c.platform}
+                    <Badge variant={c.status === "draft" ? "secondary" : "default"}>{c.status}</Badge>
+                    <Badge variant="outline">link {c.link_id}</Badge>
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap text-xs text-muted">
+                    {c.body.slice(0, 160)}
+                    {c.body.length > 160 ? "…" : ""}
+                  </p>
                 </div>
-                <p className="mt-1 whitespace-pre-wrap text-xs text-muted">
-                  {c.body.slice(0, 160)}
-                  {c.body.length > 160 ? "…" : ""}
-                </p>
-              </div>
-            ))}
-            {filtered.length > cap && (
-              <Button size="sm" variant="ghost" className="w-full" onClick={() => setCap((c) => c + 50)}>
-                Muat lebih banyak (sisa {filtered.length - cap})
-              </Button>
-            )}
+              ))}
+              {filtered.length > cap && (
+                <Button size="sm" variant="ghost" className="w-full" onClick={() => setCap((c) => c + 50)}>
+                  Muat lebih banyak (sisa {filtered.length - cap})
+                </Button>
+              )}
             </>
           )}
         </CardContent>
       </Card>
 
       {confirmPost && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-lg border border-line bg-panel p-5">
-            <h3 className="mb-1 text-base font-semibold">Posting ke {confirmPost.platform}?</h3>
-            <p className="mb-3 whitespace-pre-wrap text-sm text-muted">
-              {confirmPost.body.slice(0, 400)}
-            </p>
-            <p className="mb-3 text-xs text-muted">{confirmPost.body.length} karakter</p>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" disabled={postBusy} onClick={() => setConfirmPost(null)}>
-                Batal
-              </Button>
-              <Button disabled={postBusy} onClick={doPost}>
-                {postBusy ? <Spinner label="Posting…" /> : "Posting"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <PostConfirmModal
+          platform={confirmPost.platform}
+          body={confirmPost.body}
+          busy={postBusy}
+          onCancel={() => setConfirmPost(null)}
+          onConfirm={doPost}
+        />
       )}
     </div>
   );
