@@ -374,8 +374,19 @@ export async function warmSlots(now = new Date()): Promise<number> {
   ).all(nowStamp, horizon) as unknown as SlotRow[];
   let warmed = 0;
   const { recreateProductImage } = await import("./recreate-image.ts");
+  // Double-post root cause (proved 2026-10-04: link25 tayang 18:51 & 20:02):
+  // two slots inside the warm horizon both picked the SAME link, because
+  // last_published_at only updates at publish time. Reserve each warmed link
+  // for the rest of this sweep so no second slot locks onto it.
+  const reserved = new Set<number>();
+  for (const s of db.prepare(
+    `SELECT warmed_link_id FROM post_slots WHERE status='pending' AND warmed_link_id IS NOT NULL
+       AND scheduled_for > ? ORDER BY scheduled_for`,
+  ).all(utcStamp(now)) as Array<{ warmed_link_id: number }>) {
+    if (s.warmed_link_id) reserved.add(s.warmed_link_id);
+  }
   for (const slot of cands) {
-    const link = pickLink();
+    const link = pickLink(true, reserved);
     if (!link?.image_url) continue;
     try {
       const cur = getLink(link.id);
@@ -389,6 +400,7 @@ export async function warmSlots(now = new Date()): Promise<number> {
         `UPDATE post_slots SET warmed_link_id = ?, warmed_media_url = ?, warmed_at = datetime('now')
          WHERE id = ? AND status = 'pending'`,
       ).run(link.id, media, slot.id);
+      reserved.add(link.id);
       warmed++;
     } catch { /* next tick retries the warm */ }
   }
@@ -421,7 +433,7 @@ function recentLinkIds(days = REPOST_WINDOW_DAYS): Set<number> {
   ).all(`-${days} days`) as Array<{ id: number }>;
   return new Set(rows.map((r) => r.id));
 }
-export function pickLink(preferNew = true): ReturnType<typeof getLink> {
+export function pickLink(preferNew = true, exclude: Set<number> = new Set()): ReturnType<typeof getLink> {
   const all = listLinks();
   if (all.length === 0) return undefined;
   // Links with a verified image go first; links without one are still
@@ -433,6 +445,7 @@ export function pickLink(preferNew = true): ReturnType<typeof getLink> {
   // KNOW is dead only gets posted when nothing alive remains.
   let pool = links.length > 0 ? links : imageless;
   if (pool.length === 0) pool = all.filter((l) => !!l.image_url);
+  if (exclude.size > 0) pool = pool.filter((l) => !exclude.has(l.id));
   if (pool.length === 0) return undefined;
 
   const todayStr = dayKey(new Date());
@@ -540,8 +553,20 @@ async function preparePost(slot: SlotRow): Promise<PreparedPost> {
   if (slot.warmed_link_id) {
     const wl = getLink(slot.warmed_link_id);
     if (wl?.image_url) {
-      link = wl;
-      warmedMedia = slot.warmed_media_url ?? null;
+      // Second double-post guard (see warmSlots): if this link got published
+      // by an earlier slot inside the cooldown window, re-pick a fresh one
+      // instead of re-using the stale warm.
+      const COOLDOWN_MS = 3 * 60 * 60 * 1000;
+      const t = wl.last_published_at ? Date.parse(wl.last_published_at.replace(" ", "T") + "Z") : NaN;
+      const hot = !Number.isNaN(t) && Date.now() - t < COOLDOWN_MS;
+      if (hot) {
+        const alt = pickLink(true, new Set([wl.id]));
+        if (!alt) throw new Error(`all links in cooldown — warmed link ${wl.id} is hot`);
+        link = alt; // drop the stale warm media — preparePost uses alt's own image
+      } else {
+        link = wl;
+        warmedMedia = slot.warmed_media_url ?? null;
+      }
     }
   }
   if (!link) throw new Error("no link available to post");
@@ -940,7 +965,7 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
       const ready = await replyScopesReady();
       if (ready.ok) {
         const { answeredCommentIds, recordReply, getLink } = await import("./store.ts");
-        const { templateReply } = await import("./thread-replies.ts");
+        const { templateReply, aiReplyText } = await import("./thread-replies.ts");
         const answered = answeredCommentIds();
         const since = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
         let repliedN = 0;
@@ -951,7 +976,10 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
             for (const c of comments) {
               if (c.mine || !c.text.trim() || answered.has(c.id)) continue;
               const link = row.link_id ? getLink(row.link_id) : null;
-              const text = templateReply(c.text, link?.product ?? null);
+              // AI-first: jawaban nyambung + grounded ke caption post & produk;
+              // template = fallback kalau gateway mati (reply tak pernah gagal total)
+              const text = (await aiReplyText(c.text, { product: link?.product ?? null, kategori: link?.kategori ?? null, postText: row.body ?? null }))
+                ?? templateReply(c.text, link?.product ?? null);
               const rid = await publishReply(text, c.id);
               if (rid) {
                 recordReply({ content_id: row.id, comment_id: c.id, comment_user: c.username, comment_text: c.text.slice(0, 200), reply_text: text });
@@ -962,7 +990,7 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
             }
           } catch { /* one post's failure never kills the sweep */ }
         }
-        if (repliedN > 0) logActivity({ level: "info", source: "system", event: "threads.autoreply", message: `auto-replied ${repliedN} comments (official API)` });
+        if (repliedN > 0) logActivity({ level: "info", source: "system", event: "threads.autoreply", message: `auto-replied ${repliedN} comments (official API, AI-first)` });
       } else {
         // scopes missing → unofficial sweep (currently blind) + loud once/day
         const { scanReplies } = await import("./thread-replies.ts");

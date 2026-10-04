@@ -138,6 +138,55 @@ async function llmReply(comment: string, product: string | null): Promise<string
  * Scan published threads posts for unanswered comments.
  * dryRun=true: collect candidates without publishing (for operator review).
  */
+/** AI reply via router2nd chat (same gateway/key as vision). Grounded in the
+ * comment + the post it belongs to (caption/product/kategori). Returns null
+ * on any failure — caller falls back to templateReply. Never throws. */
+export async function aiReplyText(
+  comment: string,
+  ctx: { product?: string | null; kategori?: string | null; postText?: string | null },
+): Promise<string | null> {
+  const key = (process.env.AFFILIATE_ROUTER_KEY || "").trim();
+  if (!key) return null;
+  const base = (process.env.AFFILIATE_ROUTER_BASE_URL || "https://router2nd.realpaytrans.my.id/v1").replace(/\/+$/, "");
+  const models = (process.env.AFFILIATE_REPLY_MODEL || "ag/gemini-3.8-flash,jj/qwen3.8-flash").split(",");
+  const system =
+    `Kamu admin rekomendasi yang ramah, balas komentar Threads pakai bahasa Indonesia santai. ` +
+    `WAJIB nyambung dengan isi komentar (jawab pertanyaannya dulu), lalu kaitkan dengan info post: ` +
+    `produk "${ctx.product ?? "rekomendasi toko"}", kategori "${ctx.kategori ?? "-"}". ` +
+    `Max 180 karakter, 1 emoji, jangan sebut harga pasti, jangan sebut nama brand/merk, ` +
+    `akhiri ajakan singkat cek link di bio.`;
+  const user = `Post: "${(ctx.postText ?? "").slice(0, 300)}"\nKomentar: "${comment.slice(0, 200)}"\nBalasan:`;
+  for (const model of models) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 25000);
+      const r = await fetch(`${base}/chat/completions`, {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: { Authorization: `Bearer ${key.trim()}`, "Content-Type": "application/json" },
+        // router2nd answers SSE even for stream:false — parse both shapes
+        body: JSON.stringify({ model: model.trim(), messages: [{ role: "system", content: system }, { role: "user", content: user }], temperature: 0.7, max_tokens: 90 }),
+      });
+      clearTimeout(t);
+      if (!r.ok) continue;
+      const txt = await r.text();
+      let out = "";
+      try { out = JSON.parse(txt).choices?.[0]?.message?.content ?? ""; } catch {
+        for (const line of txt.split("\n")) {
+          const l = line.trim();
+          if (!l.startsWith("data:")) continue;
+          const p = l.slice(5).trim();
+          if (p === "[DONE]") break;
+          try { const j = JSON.parse(p); out += j.choices?.[0]?.delta?.content ?? j.choices?.[0]?.message?.content ?? ""; } catch { /* partial frame */ }
+        }
+      }
+      const clean = String(out).trim().replace(/^["']|["']$/g, "");
+      if (clean) return clean.slice(0, 220);
+    } catch { /* next model in chain */ }
+  }
+  return null;
+}
+
 export async function scanReplies(
   published: ContentRow[],
   answered: Set<string>,
