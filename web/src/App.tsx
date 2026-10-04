@@ -98,7 +98,7 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
   );
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="flex min-h-screen text-fg">
       {/* Overlay drawer mobile */}
       {drawer && (
         <div
@@ -110,7 +110,7 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
 
       {/* Sidebar desktop — collapsible via trigger */}
       <aside
-        className={`sticky top-0 hidden h-screen flex-none flex-col gap-4 border-r border-zinc-800 bg-zinc-950 p-4 transition-all md:flex ${
+        className={`sticky top-0 hidden h-screen flex-none flex-col gap-4 border-r border-line bg-panel/80 p-4 transition-all md:flex ${
           collapsed ? "w-16 p-3" : "w-52"
         }`}
       >
@@ -133,13 +133,13 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
         </div>
         {nav(false)}
         {!collapsed && (
-          <div className="text-[11px] text-zinc-600">
+          <div className="text-[11px] text-faint">
             {active.label} · React
           </div>
         )}
         <div className="mt-auto flex items-center gap-2">
-          {!collapsed && <span className="truncate text-[11px] text-zinc-500">{user}</span>}
-          <Button size="sm" variant="ghost" className="px-2 text-zinc-400" onClick={onLogout} title="Keluar">
+          {!collapsed && <span className="truncate text-[11px] text-muted">{user}</span>}
+          <Button size="sm" variant="ghost" className="px-2 text-muted" onClick={onLogout} title="Keluar">
             <LogOut size={14} />
           </Button>
         </div>
@@ -147,7 +147,7 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
 
       {/* Drawer mobile — slide-in via hamburger */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col gap-4 border-r border-zinc-800 bg-zinc-950 p-4 transition-transform md:hidden ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col gap-4 border-r border-line bg-panel p-4 transition-transform md:hidden ${
           drawer ? "translate-x-0" : "-translate-x-full"
         }`}
         aria-hidden={!drawer}
@@ -161,9 +161,9 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
           </Button>
         </div>
         {nav(true)}
-        <div className="mt-auto flex items-center justify-between text-[11px] text-zinc-500">
+        <div className="mt-auto flex items-center justify-between text-[11px] text-muted">
           <span className="truncate">{user}</span>
-          <Button size="sm" variant="ghost" className="px-2 text-zinc-400" onClick={onLogout}>
+          <Button size="sm" variant="ghost" className="px-2 text-muted" onClick={onLogout}>
             <LogOut size={14} /> Keluar
           </Button>
         </div>
@@ -171,14 +171,14 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Topbar mobile dengan hamburger trigger */}
-        <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-zinc-800 bg-zinc-950/95 p-3 backdrop-blur md:hidden">
+        <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-line bg-panel/95 p-3 backdrop-blur md:hidden">
           <Button size="sm" variant="ghost" className="px-2" onClick={() => setDrawer(true)} aria-label="Buka menu">
             <Menu size={18} />
           </Button>
           <div className="text-sm font-bold">
             AffiSoc<span className="text-accent">AI</span>
           </div>
-          <span className="ml-auto text-xs text-zinc-500">{active.label}</span>
+          <span className="ml-auto text-xs text-muted">{active.label}</span>
         </header>
 
         <main className="min-w-0 flex-1 p-6 max-md:p-4">
@@ -224,8 +224,8 @@ export default function App() {
   if (checking)
     return (
       // Reviewer/operator must never see a black screen while /api/session answers.
-      <div className="flex min-h-screen bg-zinc-950 text-zinc-100" aria-busy="true" aria-label="Memuat">
-        <div className="hidden w-52 shrink-0 flex-col gap-2 border-r border-zinc-800 p-4 md:flex">
+      <div className="flex min-h-screen text-fg" aria-busy="true" aria-label="Memuat">
+        <div className="hidden w-52 shrink-0 flex-col gap-2 border-r border-line p-4 md:flex">
           <Skeleton className="h-6 w-32" />
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-8 w-full" />

@@ -99,7 +99,7 @@ export default function Logs() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Logs</h1>
-          <p className="text-sm text-zinc-400">Aktivitas request &amp; error server. Live tail via SSE.</p>
+          <p className="text-sm text-muted">Aktivitas request &amp; error server. Live tail via SSE.</p>
         </div>
         <Button size="sm" variant="ghost" disabled={!nextOffset} onClick={() => load(false, level, q, nextOffset ?? 0)}>
           Muat lebih banyak
@@ -180,16 +180,16 @@ export default function Logs() {
             </>
           ) : rows.length ? (
             rows.map((r, i) => (
-              <div key={r.id ?? i} className="rounded-md border border-zinc-800 p-2">
+              <div key={r.id ?? i} className="rounded-md border border-line p-2">
                 <div className="flex flex-wrap items-center gap-1 text-sm">
                   <Badge variant={r.level === "error" ? "destructive" : r.level === "warn" ? "secondary" : "outline"}>
                     {r.level}
                   </Badge>
                   <b>{r.event}</b>
                   {r.meta?.tool && <Badge variant="secondary">{r.meta.tool}</Badge>}
-                  {r.meta?.query && <span className="text-xs text-zinc-500">{r.meta.query}</span>}
+                  {r.meta?.query && <span className="text-xs text-muted">{r.meta.query}</span>}
                 </div>
-                <div className="mt-1 text-xs text-zinc-500">
+                <div className="mt-1 text-xs text-muted">
                   {(r.ts || "").slice(0, 19)} · {r.source} · {r.method || "—"} {r.path || "—"} ·
                   <span className={r.status != null && r.status >= 400 ? "text-red-400" : "text-accent"}>
                     {" "}{r.status ?? "—"}
@@ -197,12 +197,12 @@ export default function Logs() {
                   {r.duration_ms != null ? ` · ${r.duration_ms}ms` : ""}
                 </div>
                 {r.message && (
-                  <div className="mt-1 whitespace-pre-wrap text-xs text-zinc-400">{r.message.slice(0, 200)}</div>
+                  <div className="mt-1 whitespace-pre-wrap text-xs text-muted">{r.message.slice(0, 200)}</div>
                 )}
               </div>
             ))
           ) : (
-            <p className="text-sm text-zinc-500">tidak ada log.</p>
+            <p className="text-sm text-muted">tidak ada log.</p>
           )}
         </CardContent>
       </Card>

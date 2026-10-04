@@ -1,17 +1,47 @@
 @import "tailwindcss";
 
 @theme {
+  /* surface ramp: page < panel < elev */
   --color-bg: #0b0c0e;
   --color-panel: #141518;
   --color-elev: #1c1e22;
-  --color-line: #26282e;
+  --color-line: #282b33;
   --color-fg: #e8e9eb;
   --color-dim: #a7abb3;
+  --color-muted: #8d939c;
+  --color-faint: #6b7078;
+  /* brand */
   --color-accent: #7dd3a8;
+  --color-accent-dim: #3f6f56;
+  --color-ink: #0b0c0e;
+  --radius-card: 14px;
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.4);
 }
 
 /* dark-only: tanpa light mode (putusan QA d7) */
 body {
-  background: var(--color-bg);
+  background: radial-gradient(1200px 700px at 80% -10%, #131519, var(--color-bg));
   color: var(--color-fg);
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* angka metrik rata kolom */
+.num {
+  font-variant-numeric: tabular-nums;
 }

@@ -287,7 +287,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Link</h1>
-          <p className="text-sm text-zinc-400">Shopee link → auto-fetch produk → append bio sheet</p>
+          <p className="text-sm text-muted">Shopee link → auto-fetch produk → append bio sheet</p>
         </div>
         <div className="flex gap-2">
           <Button size="sm" disabled={!sel.size || bulkBusy} onClick={openBulkPreview}>
@@ -333,7 +333,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
               {formBusy ? <Spinner label="Simpan…" /> : "Simpan & append ke sheet"}
             </Button>
           </div>
-          {dryOut && <p className="text-xs text-zinc-400">{dryOut}</p>}
+          {dryOut && <p className="text-xs text-muted">{dryOut}</p>}
         </CardContent>
       </Card>
 
@@ -369,11 +369,11 @@ export default function Links({ go }: { go: (r: string) => void }) {
             </>
           ) : rows.length ? (
             <>
-            <div className="md:grid hidden md:grid-cols-[1rem_5rem_minmax(0,1fr)_auto] md:gap-3 px-3 pb-1 text-[11px] text-zinc-500 sticky top-0 z-20 bg-zinc-950/95 backdrop-blur" aria-hidden>
+            <div className="md:grid hidden md:grid-cols-[1rem_5rem_minmax(0,1fr)_auto] md:gap-3 px-3 pb-1 text-[11px] text-muted sticky top-0 z-20 bg-panel/95 backdrop-blur" aria-hidden>
               <span>pilih</span><span>foto</span><span>produk / status</span><span className="md:justify-self-end">aksi</span>
             </div>
             {rows.slice(0, cap).map((l) => (
-              <div key={l.id} className="md:grid md:grid-cols-[1rem_5rem_minmax(0,1fr)_auto] md:items-start md:gap-3 flex gap-3 rounded-md border border-zinc-800 p-3">
+              <div key={l.id} className="md:grid md:grid-cols-[1rem_5rem_minmax(0,1fr)_auto] md:items-start md:gap-3 flex gap-3 rounded-md border border-line p-3">
                 <input
                   type="checkbox"
                   checked={sel.has(l.id)}
@@ -390,7 +390,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
                   {l.image_url ? (
                     <img src={l.image_url} alt="" loading="lazy" className="h-full w-full object-cover" />
                   ) : (
-                    <span className="flex h-full w-full items-center justify-center bg-zinc-800 text-xs text-zinc-500">—</span>
+                    <span className="flex h-full w-full items-center justify-center bg-elev text-xs text-muted">—</span>
                   )}
                   <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent px-1.5 pb-1 pt-5 text-[10px] font-medium leading-tight line-clamp-2 text-white">
                     {l.product || l.kategori || l.short_url}
@@ -419,7 +419,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
                     ) : null}
                   </div>
                   {l.deskripsi && (
-                    <p className="mt-1 truncate text-xs text-zinc-400">
+                    <p className="mt-1 truncate text-xs text-muted">
                       {l.deskripsi.slice(0, 140)}
                     </p>
                   )}
@@ -450,7 +450,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
             )}
             </>
           ) : (
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-muted">
               {q ? `tidak ada hasil untuk “${q}”.` : "belum ada link"}
             </p>
           )}
@@ -472,11 +472,11 @@ export default function Links({ go }: { go: (r: string) => void }) {
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <div className="flex h-40 w-40 items-center justify-center rounded-lg bg-zinc-800 text-zinc-500">
+            <div className="flex h-40 w-40 items-center justify-center rounded-lg bg-elev text-muted">
               tidak ada gambar
             </div>
           )}
-          <div className="w-full max-w-lg text-center text-sm text-zinc-200" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg text-center text-sm text-fg/90" onClick={(e) => e.stopPropagation()}>
             {imgPreview.title}
           </div>
           <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
@@ -489,23 +489,23 @@ export default function Links({ go }: { go: (r: string) => void }) {
 
       {preview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-lg rounded-lg border border-zinc-700 bg-zinc-950 p-5">
+          <div className="w-full max-w-lg rounded-lg border border-line bg-transparent p-5">
             <h3 className="mb-1 text-base font-semibold">Posting {preview.length} produk?</h3>
-            <p className="mb-3 text-sm text-zinc-400">Pratinjau sebelum posting ke semua platform.</p>
+            <p className="mb-3 text-sm text-muted">Pratinjau sebelum posting ke semua platform.</p>
             <div className="mb-4 flex max-h-[50vh] flex-col gap-2 overflow-y-auto">
               {preview.map((p, i) => (
-                <div key={i} className="flex gap-2 rounded-md border border-zinc-800 p-2">
+                <div key={i} className="flex gap-2 rounded-md border border-line p-2">
                   {p.image ? (
                     <img src={p.image} alt="" className="h-16 w-16 flex-none rounded object-cover" />
                   ) : (
-                    <span className="flex h-16 w-16 flex-none items-center justify-center rounded bg-zinc-800 text-xs text-zinc-500">
+                    <span className="flex h-16 w-16 flex-none items-center justify-center rounded bg-elev text-xs text-muted">
                       —
                     </span>
                   )}
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium">{p.title}</div>
-                    {p.desc && <div className="truncate text-xs text-zinc-400">{p.desc.slice(0, 100)}</div>}
-                    <div className="text-xs text-zinc-500">{p.meta}</div>
+                    {p.desc && <div className="truncate text-xs text-muted">{p.desc.slice(0, 100)}</div>}
+                    <div className="text-xs text-muted">{p.meta}</div>
                   </div>
                 </div>
               ))}

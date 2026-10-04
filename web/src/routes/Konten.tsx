@@ -180,7 +180,7 @@ export default function Konten() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Konten AI</h1>
-          <p className="text-sm text-zinc-400">Generate caption per platform → simpan draft (link tetap di bio)</p>
+          <p className="text-sm text-muted">Generate caption per platform → simpan draft (link tetap di bio)</p>
         </div>
         <Button size="sm" variant="ghost" onClick={loadRows}>
           Refresh
@@ -242,11 +242,11 @@ export default function Konten() {
             const body = bodies[i] ?? d.body;
             const limit = LIMITS[d.platform] ?? 99999;
             return (
-              <div key={i} className="flex gap-2 rounded-md border border-zinc-800 p-2">
+              <div key={i} className="flex gap-2 rounded-md border border-line p-2">
                 {d.media_url ? (
                   <img src={d.media_url} alt="" className="h-16 w-16 flex-none rounded object-cover" />
                 ) : (
-                  <span className="h-16 w-16 flex-none rounded bg-zinc-800" />
+                  <span className="h-16 w-16 flex-none rounded bg-elev" />
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1 text-sm font-medium">
@@ -258,7 +258,7 @@ export default function Konten() {
                     onChange={(e) => setBodies((prev) => ({ ...prev, [i]: e.target.value }))}
                     className="mt-1"
                   />
-                  <p className={`text-xs ${body.length > limit ? "text-red-400" : "text-zinc-500"}`}>
+                  <p className={`text-xs ${body.length > limit ? "text-red-400" : "text-muted"}`}>
                     {body.length}/{limit} karakter{d.needsMedia ? " · butuh gambar" : " · link di bio"}
                   </p>
                   <div className="mt-1 flex gap-1">
@@ -303,17 +303,17 @@ export default function Konten() {
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           {!filtered.length ? (
-            <p className="text-sm text-zinc-500">belum ada konten tersimpan</p>
+            <p className="text-sm text-muted">belum ada konten tersimpan</p>
           ) : (
             <>
             {filtered.slice(0, cap).map((c) => (
-              <div key={c.id} className="rounded-md border border-zinc-800 p-2">
+              <div key={c.id} className="rounded-md border border-line p-2">
                 <div className="flex items-center gap-1 text-sm font-medium">
                   {c.platform}
                   <Badge variant={c.status === "draft" ? "secondary" : "default"}>{c.status}</Badge>
                   <Badge variant="outline">link {c.link_id}</Badge>
                 </div>
-                <p className="mt-1 whitespace-pre-wrap text-xs text-zinc-400">
+                <p className="mt-1 whitespace-pre-wrap text-xs text-muted">
                   {c.body.slice(0, 160)}
                   {c.body.length > 160 ? "…" : ""}
                 </p>
@@ -331,12 +331,12 @@ export default function Konten() {
 
       {confirmPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-950 p-5">
+          <div className="w-full max-w-md rounded-lg border border-line bg-panel p-5">
             <h3 className="mb-1 text-base font-semibold">Posting ke {confirmPost.platform}?</h3>
-            <p className="mb-3 whitespace-pre-wrap text-sm text-zinc-400">
+            <p className="mb-3 whitespace-pre-wrap text-sm text-muted">
               {confirmPost.body.slice(0, 400)}
             </p>
-            <p className="mb-3 text-xs text-zinc-500">{confirmPost.body.length} karakter</p>
+            <p className="mb-3 text-xs text-muted">{confirmPost.body.length} karakter</p>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" disabled={postBusy} onClick={() => setConfirmPost(null)}>
                 Batal

@@ -86,7 +86,7 @@ export default function Sosmed() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Sosmed</h1>
-          <p className="text-sm text-zinc-400">Composer &amp; status provider. IG/FB link tetap di bio.</p>
+          <p className="text-sm text-muted">Composer &amp; status provider. IG/FB link tetap di bio.</p>
         </div>
         <Button
           size="sm"
@@ -144,7 +144,7 @@ export default function Sosmed() {
             </>
           ) : providers.length ? (
             providers.map((p) => (
-              <div key={p.slug} className="rounded-md border border-zinc-800 p-3">
+              <div key={p.slug} className="rounded-md border border-line p-3">
                 <div className="flex items-center justify-between">
                   <b className="text-sm">{p.displayName}</b>
                   <Badge
@@ -163,7 +163,7 @@ export default function Sosmed() {
                         : "DISABLED"}
                   </Badge>
                 </div>
-                <p className="mt-1 text-xs text-zinc-500">
+                <p className="mt-1 text-xs text-muted">
                   {OPS.map((k) => `${k}=${p.capabilities[k] ? "✓" : "✗"}`).join(" ")}
                 </p>
                 {p.blockedReason && <p className="mt-1 text-xs text-red-400">{p.blockedReason}</p>}
@@ -272,12 +272,12 @@ export default function Sosmed() {
               </div>
             ))
           ) : (
-            <p className="text-sm text-zinc-500">belum ada provider.</p>
+            <p className="text-sm text-muted">belum ada provider.</p>
           )}
           {lastOut && (
             <details className="text-xs">
-              <summary className="cursor-pointer text-zinc-400">respons terakhir</summary>
-              <pre className="mt-1 max-h-48 overflow-auto rounded bg-zinc-900 p-2">{lastOut}</pre>
+              <summary className="cursor-pointer text-muted">respons terakhir</summary>
+              <pre className="mt-1 max-h-48 overflow-auto rounded bg-panel p-2">{lastOut}</pre>
             </details>
           )}
         </CardContent>
@@ -300,7 +300,7 @@ export default function Sosmed() {
               {flowSt?.live ? "AKTIF" : flowSt === null ? "…" : "TIDAK AKTIF"}
             </Badge>
             {flowSt?.live && (
-              <span className="text-xs text-zinc-400">
+              <span className="text-xs text-muted">
                 {flowSt.count} cookies · expire {flowSt.earliestExpiry} ({flowSt.daysLeft} hari lagi)
               </span>
             )}
@@ -372,7 +372,7 @@ export default function Sosmed() {
             )}
           </div>
 
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-muted">
             Export dari Chrome: buka flow.google.com saat login → ekstensi cookie export (mis. EditThisCookie) → Export JSON → upload di sini.
           </p>
         </CardContent>

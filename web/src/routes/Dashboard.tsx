@@ -90,7 +90,7 @@ export default function Dashboard({ go }: { go: (r: string) => void }) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Dashboard</h1>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-muted">
             Ringkasan autopilot · {today?.date ?? "hari ini"} · tiap slot posting ke semua platform aktif
           </p>
         </div>
@@ -124,11 +124,11 @@ export default function Dashboard({ go }: { go: (r: string) => void }) {
             slots.map((s) => (
               <div
                 key={s.id}
-                className="flex items-center gap-3 rounded-md border border-zinc-800 p-3"
+                className="flex items-center gap-3 rounded-md border border-line p-3"
               >
                 <div className="w-14 flex-none text-lg font-bold">
                   {wibHm(s.scheduled_for)}
-                  <span className="block text-[10px] font-normal text-zinc-500">WIB</span>
+                  <span className="block text-[10px] font-normal text-muted">WIB</span>
                 </div>
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium">
@@ -152,7 +152,7 @@ export default function Dashboard({ go }: { go: (r: string) => void }) {
               </div>
             ))
           ) : (
-            <p className="text-sm text-zinc-500">Belum ada slot hari ini.</p>
+            <p className="text-sm text-muted">Belum ada slot hari ini.</p>
           )}
         </CardContent>
       </Card>

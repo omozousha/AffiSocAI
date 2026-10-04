@@ -29,9 +29,9 @@ export default function Login({ onLogin }: { onLogin: (user: string) => void }) 
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-950 p-4 text-zinc-100">
+    <div className="flex min-h-screen items-center justify-center bg-transparent p-4 text-fg">
       <form
-        className="w-full max-w-sm space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-6"
+        className="w-full max-w-sm space-y-4 rounded-2xl border border-line bg-panel p-6"
         onSubmit={(e) => {
           e.preventDefault();
           submit();
@@ -39,14 +39,14 @@ export default function Login({ onLogin }: { onLogin: (user: string) => void }) 
       >
         <div className="text-lg font-bold">
           AffiSoc<span className="text-accent">AI</span>
-          <div className="text-xs font-normal text-zinc-500">Masuk operator</div>
+          <div className="text-xs font-normal text-muted">Masuk operator</div>
         </div>
-        <label htmlFor="login-user" className="block text-sm font-medium text-zinc-300">
+        <label htmlFor="login-user" className="block text-sm font-medium text-dim">
           Nama pengguna
           <input
             id="login-user"
             name="username"
-            className="mt-1 min-h-[44px] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-accent"
+            className="mt-1 min-h-[44px] w-full rounded-lg border border-line bg-elev px-3 py-2 text-sm outline-none focus:border-accent"
             autoComplete="username"
             autoCapitalize="none"
             autoCorrect="off"
@@ -54,13 +54,13 @@ export default function Login({ onLogin }: { onLogin: (user: string) => void }) 
             onChange={(e) => setUser(e.target.value)}
           />
         </label>
-        <label htmlFor="login-pass" className="block text-sm font-medium text-zinc-300">
+        <label htmlFor="login-pass" className="block text-sm font-medium text-dim">
           Kata sandi
           <input
             id="login-pass"
             name="password"
             type="password"
-            className="mt-1 min-h-[44px] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-accent"
+            className="mt-1 min-h-[44px] w-full rounded-lg border border-line bg-elev px-3 py-2 text-sm outline-none focus:border-accent"
             autoComplete="current-password"
             autoCapitalize="none"
             autoCorrect="off"

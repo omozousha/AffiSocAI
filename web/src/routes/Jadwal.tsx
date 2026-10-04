@@ -229,7 +229,7 @@ export default function Jadwal() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Jadwal</h1>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-muted">
             {healthy ? "aktif" : "tidak sehat"}
             {st?.next ? ` · berikutnya ${wibHm(st.next.scheduled_for)}` : ""}
             {st && !st.enabled ? " · dijeda" : ""}
@@ -263,7 +263,7 @@ export default function Jadwal() {
                 </DialogDescription>
               </DialogHeader>
               <label className="flex flex-col gap-1 text-sm">
-                <span className="flex items-center gap-1 text-zinc-400">
+                <span className="flex items-center gap-1 text-muted">
                   <Clock className="h-3.5 w-3.5" /> Jam (WIB)
                 </span>
                 <Input
@@ -341,12 +341,12 @@ export default function Jadwal() {
                 <div
                   key={s.id}
                   className={`md:grid md:grid-cols-[3.5rem_minmax(0,1fr)_auto] md:items-center md:gap-3 flex items-center gap-3 rounded-md border p-3 ${
-                    s.id === nextId ? "border-accent" : "border-zinc-800"
+                    s.id === nextId ? "border-accent" : "border-line"
                   }`}
                 >
                   <div className="w-14 flex-none text-lg font-bold">
                     {wibHm(s.scheduled_for)}
-                    <span className="block text-[10px] font-normal text-zinc-500">WIB</span>
+                    <span className="block text-[10px] font-normal text-muted">WIB</span>
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium" title={`Slot ${s.slot_index + 1} · ${s.link_id != null ? "link " + s.link_id : "link otomatis"}`}>
@@ -363,7 +363,7 @@ export default function Jadwal() {
                         .map(platBadge)}
                     </div>
                     {(s as { post_id?: string | number }).post_id && (
-                      <div className="mt-1 text-xs text-zinc-500">
+                      <div className="mt-1 text-xs text-muted">
                         post {String((s as { post_id?: string }).post_id).slice(0, 24)}
                       </div>
                     )}
@@ -391,7 +391,7 @@ export default function Jadwal() {
               );
             })
           ) : (
-            <p className="text-sm text-zinc-500">belum ada slot hari ini.</p>
+            <p className="text-sm text-muted">belum ada slot hari ini.</p>
           )}
         </CardContent>
       </Card>
@@ -437,7 +437,7 @@ export default function Jadwal() {
                 </Button>
               )}
             </div>
-            <p className="mt-1 text-xs text-zinc-500">Maksimal 6 jam. Jam baru berlaku mulai besok — lihat seksi Besok di bawah.</p>
+            <p className="mt-1 text-xs text-muted">Maksimal 6 jam. Jam baru berlaku mulai besok — lihat seksi Besok di bawah.</p>
           </div>
         </CardContent>
       </Card>
@@ -458,10 +458,10 @@ export default function Jadwal() {
             <Skeleton className="h-14" />
           ) : tomorrow.length ? (
             tomorrow.map((s) => (
-              <div key={s.id} className="md:grid md:grid-cols-[3.5rem_minmax(0,1fr)_auto] md:items-center md:gap-3 flex items-center gap-3 rounded-md border border-zinc-800 p-3">
+              <div key={s.id} className="md:grid md:grid-cols-[3.5rem_minmax(0,1fr)_auto] md:items-center md:gap-3 flex items-center gap-3 rounded-md border border-line p-3">
                 <div className="w-14 flex-none text-lg font-bold">
                   {wibHm(s.scheduled_for)}
-                  <span className="block text-[10px] font-normal text-zinc-500">WIB</span>
+                  <span className="block text-[10px] font-normal text-muted">WIB</span>
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium" title={`Slot ${s.slot_index + 1}`}>Slot {s.slot_index + 1}</div>
@@ -479,7 +479,7 @@ export default function Jadwal() {
               </div>
             ))
           ) : (
-            <p className="text-sm text-zinc-500">belum ada slot besok.</p>
+            <p className="text-sm text-muted">belum ada slot besok.</p>
           )}
         </CardContent>
       </Card>
@@ -495,7 +495,7 @@ export default function Jadwal() {
           {byHour.length ? (
             byHour.map(([h, n]) => (
               <div key={h} className="flex items-center gap-2 text-sm">
-                <span className="w-12 text-zinc-400">{((Number(h) + 7) % 24) + ":00"}</span>
+                <span className="w-12 text-muted">{((Number(h) + 7) % 24) + ":00"}</span>
                 <span
                   className="h-2 rounded bg-accent"
                   style={{ width: `${Math.round((n / top) * 100)}%`, minWidth: 8 }}
@@ -504,12 +504,12 @@ export default function Jadwal() {
               </div>
             ))
           ) : (
-            <p className="text-sm text-zinc-500">belum ada posting.</p>
+            <p className="text-sm text-muted">belum ada posting.</p>
           )}
           <ul className="mt-2 text-sm">
             {(trend?.top_links ?? []).slice(0, 3).map((l) => (
               <li key={l.title}>
-                {l.title} <span className="text-zinc-500">×{l.count}</span>
+                {l.title} <span className="text-muted">×{l.count}</span>
               </li>
             ))}
           </ul>
