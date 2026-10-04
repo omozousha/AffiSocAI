@@ -1,42 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, Plus } from "lucide-react";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/toast";
 import { Calendar } from "../components/ui/calendar";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
-import { Skeleton } from "../components/ui/skeleton";
 import { api } from "../lib/utils";
 import { wibHm, type Slot } from "../lib/format";
 import { AddTimeDialog } from "./jadwal/AddTimeDialog";
-import { SlotRow } from "./jadwal/SlotRow";
-
-interface StatusBody {
-  enabled: boolean;
-  today: { date: string; published: number; slots: Slot[] };
-  next?: { id: number; slot_date: string; scheduled_for: string } | null;
-  platforms: { slug: string; ready: boolean }[];
-  slot_times: string[];
-}
-
-interface TrendBody {
-  published: number;
-  failed: number;
-  content_queue: number;
-  by_hour: Record<string, number>;
-  top_links: { title: string; count: number }[];
-}
-
-interface SchedBody {
-  status: StatusBody;
-  slots?: Slot[];
-  trend: TrendBody;
-}
-
-interface HealthBody {
-  ok: boolean;
-}
+import { ControlsCard } from "./jadwal/ControlsCard";
+import { HistoryCard } from "./jadwal/HistoryCard";
+import { TodayPanel } from "./jadwal/TodayPanel";
+import { UpcomingCard } from "./jadwal/UpcomingCard";
+import type { HealthBody, SchedBody, StatusBody, TrendBody } from "./jadwal/types";
 
 export default function Jadwal() {
   const [loading, setLoading] = useState(true);
@@ -246,137 +221,30 @@ export default function Jadwal() {
 
       {err && <p className="text-sm text-red-400">gagal: {err}</p>}
 
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Hari ini</CardTitle>
-            <CardDescription>
-              {st?.today.date ?? "—"} · {st?.today.published ?? 0}/{slots.length} terbit · tiap
-              slot ke semua platform aktif
-            </CardDescription>
-          </div>
-          <Button variant="ghost" size="sm" onClick={togglePause}>
-            {st?.enabled ? "Jeda" : "Lanjutkan"}
-          </Button>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {loading ? (
-            <>
-              <Skeleton className="h-16" />
-              <Skeleton className="h-16" />
-              <Skeleton className="h-16" />
-            </>
-          ) : slots.length ? (
-            slots.map((s) => (
-              <SlotRow key={s.id} s={s} isNext={s.id === nextId} busyId={busyId} onRun={runSlot} />
-            ))
-          ) : (
-            <p className="text-sm text-muted">belum ada slot hari ini.</p>
-          )}
-        </CardContent>
-      </Card>
+      <TodayPanel
+        date={st?.today.date ?? "—"}
+        published={st?.today.published ?? 0}
+        slots={slots}
+        nextId={nextId}
+        busyId={busyId}
+        loading={loading}
+        enabled={!!st?.enabled}
+        onTogglePause={togglePause}
+        onRun={runSlot}
+      />
 
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Kontrol</CardTitle>
-            <CardDescription>Berlaku untuk slot besok dan seterusnya.</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">{trend?.published ?? 0} terbit (7h)</Badge>
-            <Badge variant={(trend?.failed ?? 0) ? "destructive" : "outline"}>
-              {trend?.failed ?? 0} gagal
-            </Badge>
-            <Badge variant="outline">{trend?.content_queue ?? 0} konten siap</Badge>
-            {(st?.platforms ?? []).map((p) => (
-              <Badge key={p.slug} variant={p.ready ? "default" : "destructive"}>
-                {p.slug} {p.ready ? "siap" : "tidak siap"}
-              </Badge>
-            ))}
-          </div>
-          <div>
-            <div className="mb-2 text-sm font-medium">Jam posting (WIB)</div>
-            <div className="flex flex-wrap items-center gap-2">
-              {(st?.slot_times ?? []).map((t, i) => (
-                <Badge key={t} variant="secondary" className="gap-1 text-sm">
-                  {t}
-                  <button
-                    aria-label={`hapus jam ${t}`}
-                    className="ml-1 hover:text-red-400"
-                    onClick={() => delTime(i)}
-                  >
-                    ×
-                  </button>
-                </Badge>
-              ))}
-              {(st?.slot_times ?? []).length < 6 && (
-                <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-                  + tambah jam
-                </Button>
-              )}
-            </div>
-            <p className="mt-1 text-xs text-muted">Maksimal 6 jam. Jam baru berlaku mulai besok — lihat seksi Besok di bawah.</p>
-          </div>
-        </CardContent>
-      </Card>
+      <ControlsCard
+        published7h={trend?.published ?? 0}
+        failed={trend?.failed ?? 0}
+        queue={trend?.content_queue ?? 0}
+        platforms={st?.platforms ?? []}
+        slotTimes={st?.slot_times ?? []}
+        onDeleteTime={delTime}
+        onAddTime={() => setOpen(true)}
+      />
 
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>{jumpLabel}</CardTitle>
-            <CardDescription>
-              {jumpLabel === "Besok"
-                ? "Slot besok — jam baru yang ditambah muncul di sini."
-                : `Slot tanggal ${jumpLabel} — pilih tanggal lain dari kalender di atas.`}
-            </CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {loading ? (
-            <Skeleton className="h-14" />
-          ) : tomorrow.length ? (
-            tomorrow.map((s) => (
-              <SlotRow key={s.id} s={s} compact />
-            ))
-          ) : (
-            <p className="text-sm text-muted">belum ada slot besok.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Riwayat</CardTitle>
-            <CardDescription>{range} · dari slot yang benar-benar terbit</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {byHour.length ? (
-            byHour.map(([h, n]) => (
-              <div key={h} className="flex items-center gap-2 text-sm">
-                <span className="w-12 text-muted">{((Number(h) + 7) % 24) + ":00"}</span>
-                <span
-                  className="h-2 rounded bg-accent"
-                  style={{ width: `${Math.round((n / top) * 100)}%`, minWidth: 8 }}
-                />
-                <b>{n}</b>
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-muted">belum ada posting.</p>
-          )}
-          <ul className="mt-2 text-sm">
-            {(trend?.top_links ?? []).slice(0, 3).map((l) => (
-              <li key={l.title}>
-                {l.title} <span className="text-muted">×{l.count}</span>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
+      <UpcomingCard label={jumpLabel} slots={tomorrow} loading={loading} />
+      <HistoryCard range={range} byHour={byHour} top={top} topLinks={trend?.top_links ?? []} />
     </div>
   );
 }

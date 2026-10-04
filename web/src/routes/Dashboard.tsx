@@ -4,14 +4,9 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
 import { api } from "../lib/utils";
-import {
-  PLAT_LABEL,
-  STATUS_LABEL,
-  STATUS_VARIANT,
-  wibHm,
-  type Link,
-  type Slot,
-} from "../lib/format";
+import { PLAT_LABEL } from "../lib/format";
+import type { Link, Slot } from "../lib/format";
+import { TodayCard } from "./dashboard/TodayCard";
 
 interface ScheduleBody {
   status?: {
@@ -116,61 +111,14 @@ export default function Dashboard({ go }: { go: (r: string) => void }) {
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Hari ini</CardTitle>
-            <CardDescription>
-              {today?.date ?? "—"} · {today?.published ?? 0}/{slots.length} terbit
-            </CardDescription>
-          </div>
-          <Button variant="ghost" size="sm" onClick={() => go("jadwal")}>
-            Kelola jadwal
-          </Button>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {loading ? (
-            <>
-              <Skeleton className="h-14" />
-              <Skeleton className="h-14" />
-              <Skeleton className="h-14" />
-            </>
-          ) : slots.length ? (
-            slots.map((s) => (
-              <div
-                key={s.id}
-                className="flex items-center gap-3 rounded-md border border-line p-3"
-              >
-                <div className="w-14 flex-none text-lg font-bold">
-                  {wibHm(s.scheduled_for)}
-                  <span className="block text-[10px] font-normal text-muted">WIB</span>
-                </div>
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">
-                    {byId.get(s.link_id ?? -1) ?? (s.link_id ? `link ${s.link_id}` : "link otomatis")}
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1">
-                    <Badge variant={STATUS_VARIANT[s.status] ?? "outline"}>
-                      {STATUS_LABEL[s.status] ?? s.status}
-                    </Badge>
-                    {String(s.platform || "")
-                      .split(",")
-                      .map((x) => x.trim())
-                      .filter(Boolean)
-                      .map((n) => (
-                        <Badge key={n} variant="secondary">
-                          {PLAT_LABEL[n] || n}
-                        </Badge>
-                      ))}
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-muted">Belum ada slot hari ini.</p>
-          )}
-        </CardContent>
-      </Card>
+      <TodayCard
+        date={today?.date ?? "—"}
+        published={today?.published ?? 0}
+        slots={slots}
+        loading={loading}
+        linkLabel={(s) => byId.get(s.link_id ?? -1) ?? (s.link_id ? `link ${s.link_id}` : "link otomatis")}
+        onManage={() => go("jadwal")}
+      />
 
       <Card>
         <CardHeader>

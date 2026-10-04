@@ -1,21 +1,11 @@
 import { useEffect, useState } from "react";
-import { ROUTE_IDS, hashFor, parseHash, type RouteId } from "./lib/routing";
-import {
-  CalendarDays,
-  ChevronsLeft,
-  LayoutDashboard,
-  Link2,
-  LogOut,
-  Megaphone,
-  Menu,
-  ScrollText,
-  Sparkles,
-  X,
-} from "lucide-react";
+import { hashFor, parseHash } from "./lib/routing";
+import { ChevronsLeft, LogOut, Menu, X } from "lucide-react";
 import { Button } from "./components/ui/button";
 import { Skeleton } from "./components/ui/skeleton";
 import { ToastProvider } from "./components/ui/toast";
 import { ConfirmHost } from "./components/ui/confirm";
+import { ROUTES } from "./components/nav-items";
 import Dashboard from "./routes/Dashboard";
 import Login from "./routes/Login";
 import Jadwal from "./routes/Jadwal";
@@ -24,16 +14,6 @@ import Konten from "./routes/Konten";
 import Sosmed from "./routes/Sosmed";
 import Logs from "./routes/Logs";
 
-const NAV: Record<RouteId, { label: string; Icon: typeof Link2 }> = {
-  dashboard: { label: "Dashboard", Icon: LayoutDashboard },
-  links: { label: "Link", Icon: Link2 },
-  konten: { label: "Konten", Icon: Sparkles },
-  sosmed: { label: "Sosmed", Icon: Megaphone },
-  jadwal: { label: "Jadwal", Icon: CalendarDays },
-  logs: { label: "Logs", Icon: ScrollText },
-};
-// ROUTE_IDS (lib/routing) is the single source: nav and parse can never drift.
-const ROUTES = ROUTE_IDS.map((id) => ({ id, ...NAV[id] })) as { id: RouteId; label: string; Icon: typeof Link2 }[];
 
 function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
   const [route, setRoute] = useState<string>(() => parseHash(window.location.hash));
