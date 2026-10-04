@@ -44,6 +44,9 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
     const onHash = () => {
       const r = parseHash(window.location.hash);
       setRoute(r);
+      // back/forward can change the route while the mobile drawer is open;
+      // the drawer must not stay up over a different page (no-op on mount).
+      setDrawer(false);
       // normalize garbage/empty hash so back/forward history stays coherent
       const want = hashFor(r);
       if (window.location.hash !== want) history.replaceState(null, "", want);

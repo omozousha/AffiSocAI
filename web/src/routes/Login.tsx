@@ -68,11 +68,11 @@ export default function Login({ onLogin }: { onLogin: (user: string) => void }) 
             onChange={(e) => setPass(e.target.value)}
           />
         </label>
-        {err && (
-          <div role="alert" aria-live="polite" className="rounded-lg bg-red-950 px-3 py-2 text-sm text-red-300">
-            {err}
-          </div>
-        )}
+        {/* live region always mounted: SR announces CONTENT change reliably;
+            role=alert is assertive by itself — no redundant aria-live attr. */}
+        <div role="alert" className={err ? "rounded-lg bg-red-950 px-3 py-2 text-sm text-red-300" : "h-0 overflow-hidden"}>
+          {err}
+        </div>
         <Button type="submit" size="sm" className="min-h-[44px] w-full text-sm" disabled={busy || !user || !pass}>
           {busy ? "Memeriksa…" : "Masuk"}
         </Button>
