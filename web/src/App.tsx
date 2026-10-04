@@ -85,10 +85,12 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
           variant={r.id === route ? "default" : "ghost"}
           size="sm"
           title={r.label}
+          aria-current={r.id === route ? "page" : undefined}
           className={
-            collapsed && !mobile
-              ? "justify-center px-0"
-              : "justify-start"
+            [
+              collapsed && !mobile ? "justify-center px-0" : "justify-start",
+              r.id === route && !collapsed ? "border-l-2 border-accent bg-accent/15 text-accent hover:bg-accent/20" : "",
+            ].join(" ")
           }
           onClick={() => go(r.id)}
         >
@@ -116,12 +118,11 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
           collapsed ? "w-16 p-3" : "w-52"
         }`}
       >
-        <div className="flex items-center justify-between">
-          {!collapsed && (
-            <div className="text-sm font-bold">
-              AffiSoc<span className="text-accent">AI</span>
-            </div>
-          )}
+        <div className={collapsed ? "flex flex-col items-center gap-2" : "flex items-center justify-between"}>
+          <span className="flex h-6 w-6 flex-none items-center justify-center rounded-md bg-accent text-[13px] font-black text-bg" aria-hidden>
+            A
+          </span>
+          {!collapsed && <span className="text-sm font-bold">AffiSoc<span className="text-accent">AI</span></span>}
           <Button
             size="sm"
             variant="ghost"

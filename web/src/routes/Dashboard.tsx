@@ -101,6 +101,21 @@ export default function Dashboard({ go }: { go: (r: string) => void }) {
 
       {err && <p className="text-sm text-red-400">gagal: {err}</p>}
 
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {[
+          { k: "Link", v: links.length, sub: `${links.filter((l) => l.link_health === "alive").length} hidup` },
+          { k: "Terbit hari ini", v: today?.published ?? 0, sub: `${slots.length} slot` },
+          { k: "Gagal 7h", v: sched.trend?.failed ?? 0, sub: `${sched.trend?.published ?? 0} terbit` },
+          { k: "Metrik", v: metrics.length, sub: "post terpantau" },
+        ].map((s) => (
+          <div key={s.k} className="rounded-lg border border-line bg-panel p-3">
+            <div className="text-xs text-muted">{s.k}</div>
+            <div className="num mt-1 text-2xl font-bold leading-none">{s.v}</div>
+            <div className="mt-1 text-[11px] text-faint">{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
       <Card>
         <CardHeader>
           <div>

@@ -47,6 +47,7 @@ export interface Slot {
 }
 
 export interface Link {
+  link_health?: string | null;
   id: number;
   product?: string;
   short_url?: string;
