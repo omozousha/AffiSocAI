@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ROUTE_IDS, hashFor, parseHash, type RouteId } from "./lib/routing";
 import {
   CalendarDays,
   ChevronsLeft,
@@ -20,20 +21,36 @@ import Konten from "./routes/Konten";
 import Sosmed from "./routes/Sosmed";
 import Logs from "./routes/Logs";
 
-const ROUTES = [
-  { id: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
-  { id: "links", label: "Link", Icon: Link2 },
-  { id: "konten", label: "Konten", Icon: Sparkles },
-  { id: "sosmed", label: "Sosmed", Icon: Megaphone },
-  { id: "jadwal", label: "Jadwal", Icon: CalendarDays },
-  { id: "logs", label: "Logs", Icon: ScrollText },
-] as const;
+const NAV: Record<RouteId, { label: string; Icon: typeof Link2 }> = {
+  dashboard: { label: "Dashboard", Icon: LayoutDashboard },
+  links: { label: "Link", Icon: Link2 },
+  konten: { label: "Konten", Icon: Sparkles },
+  sosmed: { label: "Sosmed", Icon: Megaphone },
+  jadwal: { label: "Jadwal", Icon: CalendarDays },
+  logs: { label: "Logs", Icon: ScrollText },
+};
+// ROUTE_IDS (lib/routing) is the single source: nav and parse can never drift.
+const ROUTES = ROUTE_IDS.map((id) => ({ id, ...NAV[id] })) as { id: RouteId; label: string; Icon: typeof Link2 }[];
 
 function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
-  const [route, setRoute] = useState<string>("dashboard");
+  const [route, setRoute] = useState<string>(() => parseHash(window.location.hash));
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const active = ROUTES.find((r) => r.id === route) ?? ROUTES[0];
+
+  // Hash is the single source of truth: deep-link, reload, browser back/forward.
+  useEffect(() => {
+    const onHash = () => {
+      const r = parseHash(window.location.hash);
+      setRoute(r);
+      // normalize garbage/empty hash so back/forward history stays coherent
+      const want = hashFor(r);
+      if (window.location.hash !== want) history.replaceState(null, "", want);
+    };
+    onHash();
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   // Kunci scroll body saat drawer terbuka + tutup via Escape.
   useEffect(() => {
@@ -49,7 +66,8 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
   }, [drawer]);
 
   const go = (id: string) => {
-    setRoute(id);
+    const r = parseHash(`#${id}`);
+    window.location.hash = hashFor(r); // hashchange listener updates route state
     setDrawer(false);
   };
 
