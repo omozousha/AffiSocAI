@@ -32,6 +32,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("new");
   const [sel, setSel] = useState<Set<number>>(new Set());
+  const [cap, setCap] = useState(50);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [preview, setPreview] = useState<PreviewItem[] | null>(null);
   const [imgPreview, setImgPreview] = useState<{ src: string; title: string } | null>(null);
@@ -365,7 +366,11 @@ export default function Links({ go }: { go: (r: string) => void }) {
               <Skeleton className="h-20" />
             </>
           ) : rows.length ? (
-            rows.map((l) => (
+            <>
+            <div className="md:grid hidden md:grid-cols-[1rem_5rem_minmax(0,1fr)_auto] md:gap-3 px-3 pb-1 text-[11px] text-zinc-500 sticky top-0 z-20 bg-zinc-950/95 backdrop-blur" aria-hidden>
+              <span>pilih</span><span>foto</span><span>produk / status</span><span className="md:justify-self-end">aksi</span>
+            </div>
+            {rows.slice(0, cap).map((l) => (
               <div key={l.id} className="md:grid md:grid-cols-[1rem_5rem_minmax(0,1fr)_auto] md:items-start md:gap-3 flex gap-3 rounded-md border border-zinc-800 p-3">
                 <input
                   type="checkbox"
@@ -433,7 +438,13 @@ export default function Links({ go }: { go: (r: string) => void }) {
                   </div>
                 </div>
               </div>
-            ))
+            ))}
+            {rows.length > cap && (
+              <Button size="sm" variant="ghost" className="w-full" onClick={() => setCap((c) => c + 50)}>
+                Muat lebih banyak (sisa {rows.length - cap})
+              </Button>
+            )}
+            </>
           ) : (
             <p className="text-sm text-zinc-500">
               {q ? `tidak ada hasil untuk “${q}”.` : "belum ada link"}

@@ -38,6 +38,7 @@ export default function Konten() {
   const [plats, setPlats] = useState<string[]>([...POST_PLATS]);
   const [mode, setMode] = useState("mystery");
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [cap, setCap] = useState(50);
   const [bodies, setBodies] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
   const [saveBusy, setSaveBusy] = useState<number | null>(null);
@@ -304,7 +305,8 @@ export default function Konten() {
           {!filtered.length ? (
             <p className="text-sm text-zinc-500">belum ada konten tersimpan</p>
           ) : (
-            filtered.map((c) => (
+            <>
+            {filtered.slice(0, cap).map((c) => (
               <div key={c.id} className="rounded-md border border-zinc-800 p-2">
                 <div className="flex items-center gap-1 text-sm font-medium">
                   {c.platform}
@@ -316,7 +318,13 @@ export default function Konten() {
                   {c.body.length > 160 ? "…" : ""}
                 </p>
               </div>
-            ))
+            ))}
+            {filtered.length > cap && (
+              <Button size="sm" variant="ghost" className="w-full" onClick={() => setCap((c) => c + 50)}>
+                Muat lebih banyak (sisa {filtered.length - cap})
+              </Button>
+            )}
+            </>
           )}
         </CardContent>
       </Card>
