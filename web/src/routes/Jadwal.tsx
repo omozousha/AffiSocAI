@@ -403,7 +403,7 @@ export default function Jadwal() {
             <CardDescription>Berlaku untuk slot besok dan seterusnya.</CardDescription>
           </div>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3">
+        <CardContent className="flex flex-col gap-2">
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline">{trend?.published ?? 0} terbit (7h)</Badge>
             <Badge variant={(trend?.failed ?? 0) ? "destructive" : "outline"}>

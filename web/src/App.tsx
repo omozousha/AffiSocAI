@@ -222,7 +222,7 @@ export default function App() {
     return (
       // Reviewer/operator must never see a black screen while /api/session answers.
       <div className="flex min-h-screen bg-zinc-950 text-zinc-100" aria-busy="true" aria-label="Memuat">
-        <div className="hidden w-52 shrink-0 flex-col gap-3 border-r border-zinc-800 p-4 md:flex">
+        <div className="hidden w-52 shrink-0 flex-col gap-2 border-r border-zinc-800 p-4 md:flex">
           <Skeleton className="h-6 w-32" />
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-8 w-full" />

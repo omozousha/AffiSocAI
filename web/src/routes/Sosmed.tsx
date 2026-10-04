@@ -293,7 +293,7 @@ export default function Sosmed() {
             </CardDescription>
           </div>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3">
+        <CardContent className="flex flex-col gap-2">
           {/* Status badge */}
           <div className="flex items-center gap-2">
             <Badge variant={flowSt?.live ? "default" : "outline"}>
