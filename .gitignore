@@ -42,3 +42,4 @@ web/dist
 public/dist
 data/images_archive/
 data/.web-credential-reminder
+.superpowers/
