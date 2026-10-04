@@ -34,6 +34,10 @@ export type LinkRow = {
   published_url?: string | null;
   published_at?: string | null;
   is_published?: string | null;
+  /** link-health probe result: 'alive' | 'dead' | null (never checked). */
+  link_health?: string | null;
+  link_checked_at?: string | null;
+  link_dead_streak?: number | null;
 };
 
 export type ContentRow = {
@@ -111,7 +115,7 @@ if (!cols.some((c) => c.name === "first_comment")) {
 }
 // Migration for a database created before product enrichment existed.
 const linkCols = db.prepare(`PRAGMA table_info(links)`).all() as unknown as Array<{ name: string }>;
-for (const [col, ddl] of [["product", "TEXT"], ["image_url", "TEXT"], ["image_original", "TEXT"], ["deskripsi", "TEXT"], ["kategori", "TEXT"], ["sheet_id", "INTEGER"], ["published_count", "INTEGER DEFAULT 0"], ["last_published_at", "TEXT"]] as const) {
+for (const [col, ddl] of [["product", "TEXT"], ["image_url", "TEXT"], ["image_original", "TEXT"], ["deskripsi", "TEXT"], ["kategori", "TEXT"], ["sheet_id", "INTEGER"], ["published_count", "INTEGER DEFAULT 0"], ["last_published_at", "TEXT"], ["link_health", "TEXT"], ["link_checked_at", "TEXT"], ["link_dead_streak", "INTEGER DEFAULT 0"]] as const) {
   if (!linkCols.some((c) => c.name === col)) {
     db.exec(`ALTER TABLE links ADD COLUMN ${col} ${ddl}`);
   }

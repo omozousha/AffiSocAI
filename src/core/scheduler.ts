@@ -427,9 +427,12 @@ export function pickLink(preferNew = true): ReturnType<typeof getLink> {
   // Links with a verified image go first; links without one are still
   // eligible — preparePost enriches + recreates on the fly instead of
   // starving them forever behind the same 2-3 imaged links.
-  const links = all.filter((l) => !!l.image_url);
-  const imageless = all.filter((l) => !l.image_url);
-  const pool = links.length > 0 ? links : imageless;
+  const links = all.filter((l) => !!l.image_url && l.link_health !== "dead");
+  const imageless = all.filter((l) => !l.image_url && l.link_health !== "dead");
+  // All links dead per our probes? don't starve the pipeline; but a link we
+  // KNOW is dead only gets posted when nothing alive remains.
+  let pool = links.length > 0 ? links : imageless;
+  if (pool.length === 0) pool = all.filter((l) => !!l.image_url);
   if (pool.length === 0) return undefined;
 
   const todayStr = dayKey(new Date());
@@ -896,6 +899,18 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
     const t = await fetchTopTrends(3);
     if (t.length > 0) logActivity({ level: "info", source: "system", event: "trends.refresh", message: t.map((x) => x.tag).join(" ") });
   } catch { /* advisory */ }
+
+  // Link health: daily sweep (meta-gated, cheap probe per link ~1s). A dead
+  // affiliate link = zero commission; never post one. First pass runs at boot.
+  try {
+    const last = metaGet("link_health_last") ?? "";
+    if (last.slice(0, 10) !== dayKey(now)) {
+      const { checkLinkHealth } = await import("./link-health.ts");
+      const h = await checkLinkHealth();
+      metaSet("link_health_last", now.toISOString());
+      logActivity({ level: h.dead > 0 ? "warn" : "info", source: "system", event: "link.health.sweep", message: `checked ${h.checked}, alive ${h.alive}, dead ${h.dead}`, meta: h });
+    }
+  } catch { /* advisory — never blocks posting */ }
 
   let warmed = 0;
   try {

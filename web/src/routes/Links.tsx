@@ -15,6 +15,8 @@ interface LinkRow {
   deskripsi?: string;
   image_url?: string;
   sheet_id?: string | number | null;
+  link_health?: string | null;
+  link_checked_at?: string | null;
 }
 
 interface PreviewItem {
@@ -397,6 +399,8 @@ export default function Links({ go }: { go: (r: string) => void }) {
                 <div className="min-w-0 flex-1">
                   <div className="mt-1 flex flex-wrap gap-1">
                     {l.kategori && <Badge variant="secondary">{l.kategori}</Badge>}
+                    {l.link_health === "dead" && <Badge variant="destructive">link mati</Badge>}
+                    {l.link_health === "alive" && <Badge variant="outline" className="text-accent border-accent/40">link hidup</Badge>}
                     {l.image_url?.startsWith("/api/") ? (
                       <Badge variant="outline">lokal</Badge>
                     ) : l.image_url ? (
