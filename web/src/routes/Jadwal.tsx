@@ -290,7 +290,7 @@ export default function Jadwal() {
                 ))}
               </div>
               {hmValid && (
-                <p className="text-sm text-emerald-200">
+                <p className="text-sm text-accent">
                   masuk slot {landsPreview(newHm.trim()) === "today" ? "HARI INI" : "BESOK"}
                   {landsPreview(newHm.trim()) === "tomorrow" ? " (waktu hari ini sudah lewat)" : " — tick 60 detik jalan otomatis"}
                 </p>
@@ -312,7 +312,7 @@ export default function Jadwal() {
       </div>
 
       {err && <p className="text-sm text-red-400">gagal: {err}</p>}
-      {toast && <p className="text-sm text-emerald-200">{toast}</p>}
+      {toast && <p className="text-sm text-accent">{toast}</p>}
 
       <Card>
         <CardHeader>
@@ -341,7 +341,7 @@ export default function Jadwal() {
                 <div
                   key={s.id}
                   className={`flex items-center gap-3 rounded-md border p-3 ${
-                    s.id === nextId ? "border-emerald-200" : "border-zinc-800"
+                    s.id === nextId ? "border-accent" : "border-zinc-800"
                   }`}
                 >
                   <div className="w-14 flex-none text-lg font-bold">
@@ -497,7 +497,7 @@ export default function Jadwal() {
               <div key={h} className="flex items-center gap-2 text-sm">
                 <span className="w-12 text-zinc-400">{((Number(h) + 7) % 24) + ":00"}</span>
                 <span
-                  className="h-2 rounded bg-emerald-200"
+                  className="h-2 rounded bg-accent"
                   style={{ width: `${Math.round((n / top) * 100)}%`, minWidth: 8 }}
                 />
                 <b>{n}</b>

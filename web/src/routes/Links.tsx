@@ -299,7 +299,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
         </div>
       </div>
 
-      {toast && <p className="text-sm text-emerald-200">{toast}</p>}
+      {toast && <p className="text-sm text-accent">{toast}</p>}
       {err && <p className="text-sm text-red-400">gagal: {err}</p>}
 
       <Card>
@@ -401,7 +401,7 @@ export default function Links({ go }: { go: (r: string) => void }) {
                     )}
                     {(l as any).published_count ? (
                       (l as any).published_url ? (
-                        <a href={(l as any).published_url} target="_blank" rel="noopener" className="inline-flex items-center gap-1 rounded border border-emerald-700/60 bg-emerald-950/40 px-1.5 py-0.5 text-[11px] text-emerald-300 hover:border-emerald-500">
+                        <a href={(l as any).published_url} target="_blank" rel="noopener" className="inline-flex items-center gap-1 rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent hover:border-accent/70">
                           ✓ posted{(l as any).published_count > 1 ? ` x${(l as any).published_count}` : ""} ↗
                         </a>
                       ) : (

@@ -24,11 +24,11 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: C
         weeks: "mt-1",
         week: "flex w-full",
         day: "h-9 w-9 p-0 text-center text-sm",
-        day_button: "h-9 w-9 rounded-md p-0 font-normal hover:bg-zinc-800 aria-selected:bg-emerald-600 aria-selected:text-white",
-        today: "border border-emerald-600",
+        day_button: "h-9 w-9 rounded-md p-0 font-normal hover:bg-zinc-800 aria-selected:bg-accent/80 aria-selected:text-[#0b0c0e]",
+        today: "border border-accent/60",
         outside: "text-zinc-600 opacity-50",
         disabled: "text-zinc-700 opacity-40",
-        selected: "bg-emerald-600 text-white hover:bg-emerald-600",
+        selected: "bg-accent text-[#0b0c0e] hover:bg-accent/85",
         ...classNames,
       }}
       {...props}

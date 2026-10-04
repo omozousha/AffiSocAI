@@ -191,7 +191,7 @@ export default function Logs() {
                 </div>
                 <div className="mt-1 text-xs text-zinc-500">
                   {(r.ts || "").slice(0, 19)} · {r.source} · {r.method || "—"} {r.path || "—"} ·
-                  <span className={r.status != null && r.status >= 400 ? "text-red-400" : "text-emerald-200"}>
+                  <span className={r.status != null && r.status >= 400 ? "text-red-400" : "text-accent"}>
                     {" "}{r.status ?? "—"}
                   </span>
                   {r.duration_ms != null ? ` · ${r.duration_ms}ms` : ""}

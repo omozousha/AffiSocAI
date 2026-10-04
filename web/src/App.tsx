@@ -114,7 +114,7 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
         <div className="flex items-center justify-between">
           {!collapsed && (
             <div className="text-sm font-bold">
-              AffiSoc<span className="text-emerald-200">AI</span>
+              AffiSoc<span className="text-accent">AI</span>
             </div>
           )}
           <Button
@@ -151,7 +151,7 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
       >
         <div className="flex items-center justify-between">
           <div className="text-sm font-bold">
-            AffiSoc<span className="text-emerald-200">AI</span>
+            AffiSoc<span className="text-accent">AI</span>
           </div>
           <Button size="sm" variant="ghost" className="px-2" onClick={() => setDrawer(false)} aria-label="Tutup menu">
             <X size={16} />
@@ -173,7 +173,7 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
             <Menu size={18} />
           </Button>
           <div className="text-sm font-bold">
-            AffiSoc<span className="text-emerald-200">AI</span>
+            AffiSoc<span className="text-accent">AI</span>
           </div>
           <span className="ml-auto text-xs text-zinc-500">{active.label}</span>
         </header>

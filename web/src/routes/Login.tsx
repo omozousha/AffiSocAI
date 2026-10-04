@@ -38,7 +38,7 @@ export default function Login({ onLogin }: { onLogin: (user: string) => void }) 
         }}
       >
         <div className="text-lg font-bold">
-          AffiSoc<span className="text-emerald-300">AI</span>
+          AffiSoc<span className="text-accent">AI</span>
           <div className="text-xs font-normal text-zinc-500">Masuk operator</div>
         </div>
         <label htmlFor="login-user" className="block text-sm font-medium text-zinc-300">
@@ -46,7 +46,7 @@ export default function Login({ onLogin }: { onLogin: (user: string) => void }) 
           <input
             id="login-user"
             name="username"
-            className="mt-1 min-h-[44px] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+            className="mt-1 min-h-[44px] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-accent"
             autoComplete="username"
             autoCapitalize="none"
             autoCorrect="off"
@@ -60,7 +60,7 @@ export default function Login({ onLogin }: { onLogin: (user: string) => void }) 
             id="login-pass"
             name="password"
             type="password"
-            className="mt-1 min-h-[44px] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+            className="mt-1 min-h-[44px] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-accent"
             autoComplete="current-password"
             autoCapitalize="none"
             autoCorrect="off"

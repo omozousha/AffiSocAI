@@ -100,7 +100,7 @@ export default function Sosmed() {
         </Button>
       </div>
 
-      {toast && <p className="text-sm text-emerald-200">{toast}</p>}
+      {toast && <p className="text-sm text-accent">{toast}</p>}
 
       <Card>
         <CardHeader>
