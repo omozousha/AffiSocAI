@@ -41,14 +41,15 @@ test("brandTokens keeps model codes, drops category nouns", () => {
   assert.ok(!t.includes("full") && !t.includes("face"));
 });
 
-test("composeSmartBody: threads stays under budget, ig appends tag line", () => {
+test("composeSmartBody: threads stays under budget, ig carries community tag", () => {
   const s = validateStory(GOOD, null)!;
-  const th = composeSmartBody(s, "threads", "helm", ["motogp"]);
-  const ig = composeSmartBody(s, "instagram", "helm", ["motogp"]);
+  const th = composeSmartBody(s, "threads", "helm");
+  const ig = composeSmartBody(s, "instagram", "helm");
   assert.ok(th.length <= 425, `threads ${th.length}`);
   assert.ok(th.includes("Link & detail lengkap ada di bio."));
   // ladder drops the tag line first when over budget; never the hook
   assert.ok(th.startsWith(s.hook));
-  assert.match(ig, /#motogp/);
+  // community/topic fixed per directive: "Ai Threads" on every platform
+  assert.match(ig, /#AiThreads/);
   assert.ok(ig.includes("Link & detail lengkap ada di bio."));
 });

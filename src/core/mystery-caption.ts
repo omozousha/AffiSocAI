@@ -17,7 +17,7 @@ import type { ContentRow } from "./store.ts";
 import type { LinkInfo } from "./templates.ts";
 import { buildIdentity, detectType } from "./product-identity.ts";
 import { pickHook, type HookVariant } from "./product-hook.ts";
-import { cachedTrends } from "./trends.ts";
+
 
 export type MysteryDraft = {
   platform: "instagram" | "facebook" | "x" | "threads";
@@ -101,27 +101,17 @@ export function tagsFor(type: string): string[] {
   return base.includes("#linkdiobio") ? base : [...base, "#linkdiobio"];
 }
 
+/** Community/topic — fixed per operator directive 2026-10-05: every post
+ *  routes to the "Ai Threads" community/topic, no dynamic trending. */
+export const COMMUNITY_TOPIC = "Ai Threads";
+export const COMMUNITY_TAG = "#AiThreads";
+
 /**
- * Threads topic_tag per product type — one tag per post, routes into the
- * topic feed (the API's equivalent of the composer's community picker).
- * Max 50 chars, no periods/ampersands. Must match a tag users follow.
+ * Threads topic_tag — always the Ai Threads community.
+ * Max 50 chars, no periods/ampersands.
  */
-export function topicFor(type: string): string | null {
-  // Capitalized: Meta renders the topic label capitalized in-app, and our
-  // A/B test (Fashion vs fashion) showed both display as "Fashion".
-  const m: Record<string, string> = {
-    fashion: "Fashion",
-    skincare: "Beauty",
-    rumah: "Homedecor",
-    outdoor: "Camping",
-    mainan: "Toys",
-    olahraga: "Fitness",
-    sepatu: "Sneakers",
-    tas: "Fashion",
-    gadget: "Tech",
-    helm: "Motorcycle",
-  };
-  return m[type] ?? null;
+export function topicFor(_type: string): string | null {
+  return COMMUNITY_TOPIC;
 }
 
 // Threads budget: 500 chars INCLUDING the short link line the publish paths
@@ -153,13 +143,9 @@ export function buildMysteryCaption(
   });
   const hook = pickHook(identity, publishIndex);
   const type = detectType(identity);
-  // Hashtag line = topic tags for the product category + top-3 trending
-  // (newsjack). Trends come from the scheduler prefetch cache; empty cache =
-  // same behavior as before this feature.
-  // dedupe AFTER cameljoin: "India vs Brazil"/"India vs Brasil" normalize to
-  // distinct spellings upstream but can collide here; keep unique tags only.
-  const trending = Array.from(new Set(cachedTrends(5).map((t) => t.tag))).filter(Boolean).slice(0, 3);
-  const tags = [...tagsFor(type), ...trending.filter((tg) => !tagsFor(type).includes(tg))];
+  // Hashtag line = product-category tags + the fixed community tag
+  // (operator directive 2026-10-05: "Ai Threads" replaces dynamic trending).
+  const tags = [...tagsFor(type), COMMUNITY_TAG].filter((v, i, a) => a.indexOf(v) === i);
   const constraints: string[] = [];
 
   let body = "";

@@ -20,7 +20,7 @@
 import { buildIdentity, detectType } from "./product-identity.ts";
 import { logActivity } from "./activity-log.ts";
 import { typeLabel } from "./product-identity.ts";
-import { BIO_LINE, tagsFor } from "./mystery-caption.ts";
+import { BIO_LINE, tagsFor, COMMUNITY_TAG, COMMUNITY_TOPIC } from "./mystery-caption.ts";
 
 const BASE = process.env.AFFILIATE_ROUTER_BASE_URL || "https://router2nd.realpaytrans.my.id/v1";
 const CHAIN = (process.env.AFFILIATE_SMART_MODEL || "ag/gemini-3.8-flash,ag/gemini-3.7-flash,jj/qwen3.8-flash").split(",");
@@ -156,7 +156,7 @@ export async function smartCaption(link: {
   product: string | null;
   kategori: string | null;
   shop?: string | null;
-}, trendingTags: string[] = []): Promise<SmartStory | null> {
+}): Promise<SmartStory | null> {
   const key = process.env.AFFILIATE_ROUTER_KEY;
   if (!key || process.env.AFFILIATE_SMART_CAPTION === "0") return null;
   const id = buildIdentity({ product: link.product, kategori: link.kategori, shop: link.shop ?? null });
@@ -164,7 +164,7 @@ export async function smartCaption(link: {
   const clue = typeLabel(type);
   const user =
     `Produk: ${link.product || clue} (kategori ${link.kategori || clue}).\n` +
-    `Topik ramai (konteks CTA saja, jangan jadi hashtag): ${trendingTags.slice(0, 3).join(", ") || "-"}.\n` +
+    `Topik komunitas untuk CTA (sebut "Ai Threads" sebagai tempat sharing, jangan jadi hashtag): ${COMMUNITY_TOPIC}.\n` +
     `Tulis 3 paragraf. Nama/merk produk di atas TIDAK BOLEH muncul di tulisan.`;
   void id;
   for (const model of CHAIN) {
@@ -199,13 +199,9 @@ export function composeSmartBody(
   story: SmartStory,
   platform: "threads" | "instagram" | "facebook" | "x",
   type: string,
-  trending: string[],
 ): string {
-  const base = tagsFor(type);
-  // trend tags arrive "#Motogp" from cachedTrends, but normalize anyway —
-  // a hashtag without # is invisible to every platform parser.
-  const norm = trending.map((t) => (t.startsWith("#") ? t : `#${t}`)).filter((t) => t.length > 1);
-  const tags = [...base, ...norm.filter((t) => !base.includes(t))].slice(0, 6);
+  // community tag fixed: "Ai Threads" (operator directive 2026-10-05)
+  const tags = [...tagsFor(type), COMMUNITY_TAG].filter((v, i, a) => a.indexOf(v) === i);
   const tagLine = tags.join(" ");
   if (platform === "threads") {
     const full = `${story.hook}\n\n${story.why}\n\n${story.cta}\n\n${BIO_LINE}\n\n${tagLine}`;
