@@ -673,7 +673,18 @@ const server = createServer(async (req, res) => {
       if (!link) return json(res, 404, { error: `no link with id ${body.link_id}` });
       const platforms = Array.isArray(body.platforms) && body.platforms.length ? body.platforms : MYSTERY_PLATFORMS;
       const idx = Number(link.published_count ?? 0);
-      const drafts = platforms.map((p: MysteryDraft["platform"]) => buildMysteryCaption(p, link, idx));
+      // Smart caption first (same rule as the scheduler); template on any miss.
+      const { buildIdentity, detectType } = await import("../core/product-identity.ts");
+      const { cachedTrends } = await import("../core/trends.ts");
+      const { smartCaption, composeSmartBody } = await import("../core/smart-caption.ts");
+      const tr = Array.from(new Set(cachedTrends(5).map((t) => t.tag))).filter(Boolean).slice(0, 3);
+      const id = buildIdentity({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null });
+      const story = await smartCaption({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null }, tr);
+      const typeId = detectType(id);
+      const drafts = platforms.map((p: MysteryDraft["platform"]) => {
+        const d = buildMysteryCaption(p, link, idx);
+        return story ? { ...d, body: composeSmartBody(story, p, typeId, tr) } : d;
+      });
       const mediaUrl = link.image_url ?? null;
       return json(res, 200, {
         drafts: drafts.map((d) => ({
@@ -929,13 +940,23 @@ const server = createServer(async (req, res) => {
       const target = (want ? ready.find((t) => t.key === want) : ready[0]) ?? null;
       if (!target) return json(res, 400, { error: `platform ${want} is not publishable (ready: ${ready.map((t) => t.key).join(",")})` });
       const draft = buildMysteryCaption(target.key, link as Parameters<typeof buildMysteryCaption>[1], Number(link.published_count ?? 0));
+      const { buildIdentity, detectType } = await import("../core/product-identity.ts");
+      const { topicFor } = await import("../core/mystery-caption.ts");
+      // Smart caption (AI) on the manual publish path too — same rule as the
+      // scheduler; any miss keeps the template body byte-identical to before.
+      const { cachedTrends } = await import("../core/trends.ts");
+      const { smartCaption, composeSmartBody } = await import("../core/smart-caption.ts");
+      let finalBody = draft.body;
+      {
+        const tr = Array.from(new Set(cachedTrends(5).map((t) => t.tag))).filter(Boolean).slice(0, 3);
+        const story = await smartCaption({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null }, tr);
+        if (story) finalBody = composeSmartBody(story, target.key, detectType(buildIdentity({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null })), tr);
+      }
       // Post the generated product image, not the raw Shopee CDN photo. A link
       // that never went through Recreate still points at susercontent — run it
       // now so every post carries the generated creative.
       const media = absoluteImageUrl(link.image_url);
-      const text = draft.body + (target.key === "threads" && link.short_url && !draft.body.includes(link.short_url) ? `\n\n${link.short_url}` : "");
-      const { buildIdentity, detectType } = await import("../core/product-identity.ts");
-      const { topicFor } = await import("../core/mystery-caption.ts");
+      const text = finalBody + (target.key === "threads" && link.short_url && !finalBody.includes(link.short_url) ? `\n\n${link.short_url}` : "");
       const topicTag = target.key === "threads"
         ? topicFor(detectType(buildIdentity({ product: link.product, kategori: link.kategori ?? null, shop: link.shop ?? null })))
         : null;

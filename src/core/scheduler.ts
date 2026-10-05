@@ -33,7 +33,8 @@ import { buildIdentity, detectType } from "./product-identity.ts";
 import { imagePromptFor, setHookPerf } from "./product-hook.ts";
 import { aggregatePerf, HOOK_PERF_KEY } from "./hook-perf.ts";
 import { buildMysteryCaption, MYSTERY_PLATFORMS, topicFor } from "./mystery-caption.ts";
-import { fetchTopTrends } from "./trends.ts";
+import { fetchTopTrends, cachedTrends } from "./trends.ts";
+import { smartCaption, composeSmartBody } from "./smart-caption.ts";
 import { listProviders, getProvider } from "./registry.ts";
 import { logActivity } from "./activity-log.ts";
 import type { SocialContent, SocialProvider } from "./types.ts";
@@ -694,9 +695,18 @@ async function preparePost(slot: SlotRow): Promise<PreparedPost> {
   if (!mediaUrl) throw new Error("recreated image has no fetchable URL");
 
   const publishIndex = (slot.attempts ?? 0) + (slot.id % 100);
+  // Smart caption (AI): one story per slot, shared by every platform — same
+  // "one link per slot" rule as the creative. Null (dead router / validation
+  // reject / AFFILIATE_SMART_CAPTION=0) = template draft exactly as before.
+  const trending = Array.from(new Set(cachedTrends(5).map((t) => t.tag))).filter(Boolean).slice(0, 3);
+  const story = await smartCaption(
+    { product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null },
+    trending,
+  );
+  if (story) logActivity({ level: "info", source: "system", event: "caption.smart", message: `link ${link.id}: AI story (${story.hook.slice(0, 40)}…) for all ${targets.length} platforms` });
   const prepared: PreparedPost = { link_id: link.id, targets: [] };
   for (const target of targets) {
-    const draft = buildMysteryCaption(target.platform, {
+    let draft = buildMysteryCaption(target.platform, {
       short_url: link.short_url,
       resolved_url: link.resolved_url,
       shopee_shop_id: link.shopee_shop_id,
@@ -706,6 +716,7 @@ async function preparePost(slot: SlotRow): Promise<PreparedPost> {
       image_url: link.image_url,
       kategori: link.kategori ?? null,
     }, publishIndex);
+    if (story) draft = { ...draft, body: composeSmartBody(story, target.platform, detectType(idForImg), trending) };
 
     let text = draft.body;
     if (target.platform === "threads" && link.short_url && !text.includes(link.short_url)) {
