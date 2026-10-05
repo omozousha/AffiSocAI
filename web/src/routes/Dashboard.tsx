@@ -6,14 +6,25 @@ import { Skeleton } from "../components/ui/skeleton";
 import { api } from "../lib/utils";
 import { PLAT_LABEL } from "../lib/format";
 import type { Link, Slot } from "../lib/format";
+import { useToast } from "../components/ui/toast";
 import { TodayCard } from "./dashboard/TodayCard";
+import { InsightsCard } from "./dashboard/InsightsCard";
+import { StatGrid } from "./dashboard/StatGrid";
 
 interface ScheduleBody {
   status?: {
+    enabled?: boolean;
+    slot_times?: string[];
     today?: { date?: string; published?: number; slots?: Slot[] };
     platforms?: { slug: string; ready: boolean }[];
   };
   trend?: { published?: number; failed?: number; content_queue?: number };
+  pool?: { total: number; usable: number; cooling: number; dead: number; no_image: number };
+}
+
+export interface InsightsBody {
+  best_hours?: { hourLocal: string; posts: number; avgReach: number }[];
+  suggested_times?: string[];
 }
 
 interface LinksBody {
@@ -47,30 +58,52 @@ export default function Dashboard({ go }: { go: (r: string) => void }) {
   const [liveCount, setLiveCount] = useState("");
   const [platRows, setPlatRows] = useState<{ slug: string; ready: boolean }[]>([]);
   const [metrics, setMetrics] = useState<MetricRow[]>([]);
+  const [insights, setInsights] = useState<InsightsBody>({});
+  const [times, setTimes] = useState<string[]>([]);
+  const toasts = useToast();
 
   const load = useCallback(async () => {
     setErr("");
     try {
-      const [s, l, p, mx] = await Promise.all([
+      const [s, l, p, mx, ins] = await Promise.all([
         api<ScheduleBody>("/api/schedule?window=7"),
         api<LinksBody>("/api/links"),
         api<ProvidersBody>("/api/providers"),
         api<MetricsBody>("/api/metrics?limit=50"),
+        api<InsightsBody>("/api/insights"),
       ]);
       if (s.status >= 400) throw new Error((s.body as { error?: string }).error || "gagal muat jadwal");
       setSched(s.body);
       setLinks(l.body.links ?? []);
       setPlatRows(s.body.status?.platforms ?? []);
+      setTimes(s.body.status?.slot_times ?? []);
       const provs = p.body.providers ?? [];
       const live = provs.filter((x) => x.status === "VERIFIED-EXECUTED").length;
       setLiveCount(`${live}/${provs.length}`);
       setMetrics(mx.body.metrics ?? []);
+      setInsights(ins.body ?? {});
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
   }, []);
+
+  /** P2.8 apply — writes slot_times via the existing config endpoint. */
+  const applyTimes = useCallback(
+    async (t: string) => {
+      const r = await api<{ error?: string }>("/api/schedule/config", {
+        method: "POST",
+        body: JSON.stringify({ slot_times: t }),
+      });
+      if (r.status >= 400) toasts.toast(`gagal: ${r.body.error ?? r.status}`, "err");
+      else {
+        toasts.toast(`jam posting diganti → ${t}`);
+        load();
+      }
+    },
+    [load, toasts],
+  );
 
   useEffect(() => {
     load();
@@ -96,20 +129,16 @@ export default function Dashboard({ go }: { go: (r: string) => void }) {
 
       {err && <p className="text-sm text-red-400">gagal: {err}</p>}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[
-          { k: "Link", v: links.length, sub: `${links.filter((l) => l.link_health === "alive").length} hidup` },
-          { k: "Terbit hari ini", v: today?.published ?? 0, sub: `${slots.length} slot` },
-          { k: "Gagal 7h", v: sched.trend?.failed ?? 0, sub: `${sched.trend?.published ?? 0} terbit` },
-          { k: "Metrik", v: metrics.length, sub: "post terpantau" },
-        ].map((s) => (
-          <div key={s.k} className="rounded-lg border border-line bg-panel p-3">
-            <div className="text-xs text-muted">{s.k}</div>
-            <div className="num mt-1 text-2xl font-bold leading-none">{s.v}</div>
-            <div className="mt-1 text-[11px] text-faint">{s.sub}</div>
-          </div>
-        ))}
-      </div>
+      <StatGrid
+        links={links}
+        pool={sched.pool}
+        publishedToday={today?.published ?? 0}
+        slotCount={slots.length}
+        failed7h={sched.trend?.failed ?? 0}
+        published7h={sched.trend?.published ?? 0}
+      />
+
+      <InsightsCard insights={insights} current={times} onApply={applyTimes} />
 
       <TodayCard
         date={today?.date ?? "—"}

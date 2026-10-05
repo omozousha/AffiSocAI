@@ -30,7 +30,8 @@ import { fileURLToPath } from "node:url";
 
 import { listLinks, getLink, addContent, listContent, setContentStatus, syncLinkMarkers } from "./store.ts";
 import { buildIdentity, detectType } from "./product-identity.ts";
-import { imagePromptFor } from "./product-hook.ts";
+import { imagePromptFor, setHookPerf } from "./product-hook.ts";
+import { aggregatePerf, HOOK_PERF_KEY } from "./hook-perf.ts";
 import { buildMysteryCaption, MYSTERY_PLATFORMS, topicFor } from "./mystery-caption.ts";
 import { fetchTopTrends } from "./trends.ts";
 import { listProviders, getProvider } from "./registry.ts";
@@ -122,6 +123,31 @@ function metaSet(key: string, value: string): void {
     `INSERT INTO scheduler_meta (key, value) VALUES (?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
   ).run(key, value);
+}
+
+/**
+ * P2.7 — daily aggregate of post_metrics into per-hook stats, then push the
+ * JSON into product-hook's cache so pickHook can favor proven winners.
+ * Rolling 30-day window; runs at most once per day (meta-gated like the
+ * health sweep). Cold DB / no metrics => cache stays null => old rotation.
+ */
+function refreshHookPerf(now: Date): void {
+  const last = metaGet("hook_perf_last") ?? "";
+  if (last.slice(0, 10) === dayKey(now)) return;
+  const rows = db
+    .prepare(
+      `SELECT c.body b, m.metrics m, l.product p, l.kategori k
+       FROM post_metrics m JOIN content c ON c.id = m.content_id
+       LEFT JOIN links l ON l.id = c.link_id
+       WHERE c.status = 'published' AND c.created_at > datetime('now','-30 days')`,
+    )
+    .all() as unknown as { b: string; m: string; p: string | null; k: string | null }[];
+  const perf = aggregatePerf(rows);
+  metaSet(HOOK_PERF_KEY, JSON.stringify(perf));
+  metaSet("hook_perf_last", now.toISOString());
+  setHookPerf(JSON.stringify(perf));
+  const types = Object.keys(perf).length;
+  if (types > 0) logActivity({ level: "info", source: "system", event: "hook.perf", message: `aggregated ${rows.length} metric posts into ${types} type buckets` });
 }
 
 /** Effective slot times, in local time. Stored as "HH:MM,HH:MM,HH:MM". */
@@ -433,6 +459,26 @@ function recentLinkIds(days = REPOST_WINDOW_DAYS): Set<number> {
   ).all(`-${days} days`) as Array<{ id: number }>;
   return new Set(rows.map((r) => r.id));
 }
+
+/**
+ * P2.10 — pool snapshot for the alert + UI: how many links can actually post
+ * right now. `usable` mirrors pickLink's primary filter (image + not dead);
+ * `cooling` counts usable links inside the 3h per-link cooldown.
+ */
+export function poolStatus(): { total: number; usable: number; cooling: number; dead: number; no_image: number } {
+  const all = listLinks();
+  const dead = all.filter((l) => l.link_health === "dead").length;
+  const no_image = all.filter((l) => !l.image_url && l.link_health !== "dead").length;
+  const usablePool = all.filter((l) => !!l.image_url && l.link_health !== "dead");
+  const COOLDOWN_MS = 3 * 60 * 60 * 1000;
+  let cooling = 0;
+  for (const l of usablePool) {
+    const t = l.last_published_at ? Date.parse(l.last_published_at.replace(" ", "T") + "Z") : NaN;
+    if (!Number.isNaN(t) && Date.now() - t < COOLDOWN_MS) cooling++;
+  }
+  return { total: all.length, usable: usablePool.length, cooling, dead, no_image };
+}
+
 export function pickLink(preferNew = true, exclude: Set<number> = new Set()): ReturnType<typeof getLink> {
   const all = listLinks();
   if (all.length === 0) return undefined;
@@ -925,6 +971,11 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
     if (t.length > 0) logActivity({ level: "info", source: "system", event: "trends.refresh", message: t.map((x) => x.tag).join(" ") });
   } catch { /* advisory */ }
 
+  // P2.7 — daily hook_perf recompute (meta-gated, pure SQL over post_metrics).
+  try {
+    refreshHookPerf(now);
+  } catch { /* advisory — rotation continues without perf signal */ }
+
   // Link health: daily sweep (meta-gated, cheap probe per link ~1s). A dead
   // affiliate link = zero commission; never post one. First pass runs at boot.
   try {
@@ -945,6 +996,22 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
       metaSet("metrics_last_pull_ts", String(now.getTime()));
       const { pullMetricsBatch } = await import("./analytics.ts");
       await pullMetricsBatch();
+    }
+  } catch { /* advisory */ }
+
+  // P2.10 — pool alert: a dead affiliate link is invisible until posts starve.
+  // Warn (once/day) when usable pool is thin or many links are marked dead.
+  try {
+    const ps = poolStatus();
+    if ((ps.usable < 3 || ps.dead > 0) && (metaGet("pool_alert_last") ?? "").slice(0, 10) !== dayKey(now)) {
+      metaSet("pool_alert_last", now.toISOString());
+      logActivity({
+        level: ps.usable < 3 ? "warn" : "info",
+        source: "system",
+        event: "pool.alert",
+        message: `pool: ${ps.usable} usable, ${ps.dead} dead, ${ps.cooling} cooling${ps.usable < 3 ? " — tambah link Shopee atau bersihkan yang mati" : ""}`,
+        meta: ps,
+      });
     }
   } catch { /* advisory */ }
 
@@ -1196,6 +1263,9 @@ let timer: NodeJS.Timeout | null = null;
 export function startScheduler(): void {
   if (timer) clearInterval(timer);
   ensureHorizon(2);
+  // P2.7 — load the last stored hook_perf immediately so pickHook has the
+  // signal even before the day's first refresh tick.
+  setHookPerf(metaGet(HOOK_PERF_KEY));
   // Warm the trends cache at boot so the first tick's captions have hashtags
   // (fire-and-forget — a dead provider never blocks startup).
   void fetchTopTrends(3).catch(() => {});

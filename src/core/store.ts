@@ -139,6 +139,18 @@ export function listPostMetrics(limit = 50): { content_id: number; platform: str
   return rows.map((r) => ({ ...r, metrics: JSON.parse(r.metrics) }));
 }
 
+/** P2.8 — publish time + metrics JSON for hour ranking. Prefer the slot's
+ *  scheduled_for (the intended post moment); fall back to created_at. */
+export function metricsWithPostTime(windowDays = 30): { created_at: string; metrics: string }[] {
+  return db.prepare(
+    `SELECT coalesce(s.scheduled_for, c.created_at) AS created_at, m.metrics
+     FROM post_metrics m
+     JOIN content c ON c.id = m.content_id
+     LEFT JOIN post_slots s ON s.content_id = c.id AND s.status = 'published'
+     WHERE c.status = 'published' AND coalesce(s.scheduled_for, c.created_at) > datetime('now', ?)`,
+  ).all(`-${windowDays} days`) as unknown as { created_at: string; metrics: string }[];
+}
+
 /** content ids yang metriknya sudah berumur > ageHours — target refresh tick. */
 export function staleMetricsContentIds(ageHours = 24, limit = 4): number[] {
   const rows = db.prepare(

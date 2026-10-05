@@ -13,6 +13,7 @@
 
 import type { ProductIdentity } from "./product-identity.ts";
 import { detectType, typeLabel } from "./product-identity.ts";
+import { bestOpenFor } from "./hook-perf.ts";
 
 export type HookVariant = {
   open: string;  // paragraph 1 — scroll-stopping hook
@@ -219,13 +220,30 @@ const HOOKS: HooksByType = {
  * integer that increments each publish. Rotating on it guarantees the first
  * N slots for one product are all different before any repeats.
  */
+// P2.7 feedback channel: the scheduler injects the daily hook_perf aggregate
+// (meta table value) via setHookPerf; pickHook reads the cached string. A
+// plain module-level cache keeps this file DB-free and unit-testable.
+let hookPerfCache: string | null = null;
+export function setHookPerf(json: string | null): void {
+  hookPerfCache = json;
+}
+
 export function pickHook(id: ProductIdentity, publishIndex: number): HookVariant {
   const type = detectType(id);
   const pool = HOOKS[type] ?? HOOKS.default;
-  const h = pool[publishIndex % pool.length]!;
   const clue = typeLabel(type);
   const fill = (s: string) => s.replace(/\{\{clue\}\}/g, clue);
-  return { open: fill(h.open), why: fill(h.why), cta: fill(h.cta) };
+  const filled = pool.map((h) => ({ open: fill(h.open), why: fill(h.why), cta: fill(h.cta) }));
+  // Once the daily hook_perf aggregate has >= MIN_SAMPLE posts for a variant,
+  // that variant wins. No data / thin sample = rotation exactly as before
+  // (slot-index), so behavior is unchanged while cold.
+  const winner = bestOpenFor(hookPerfCache, type);
+  if (winner) {
+    // perf stores the first line of the PUBLISHED caption = the filled open.
+    const hit = filled.find((h) => h.open === winner);
+    if (hit) return hit;
+  }
+  return filled[publishIndex % filled.length]!;
 }
 
 /** Prompt fragment for image regen — matches the product type. */

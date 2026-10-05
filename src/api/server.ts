@@ -34,6 +34,7 @@ import {
   ensureHorizon,
   runSlotNow,
   startScheduler,
+  poolStatus,
 } from "../core/scheduler.ts";
 import {
   listActivity, listActivitySince,
@@ -332,6 +333,14 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { metrics: listPostMetrics(Number(url.searchParams.get("limit") ?? 50)) });
     }
 
+    /** P2.8 — best posting hours (WIB) from 30-day reach data; advisory only. */
+    if (req.method === "GET" && url.pathname === "/api/insights") {
+      const { metricsWithPostTime } = await import("../core/store.ts");
+      const { bestHours, suggestSlotTimes } = await import("../core/insights.ts");
+      const stats = bestHours(metricsWithPostTime(30), 30, 3);
+      return json(res, 200, { best_hours: stats, suggested_times: suggestSlotTimes(stats) });
+    }
+
     // --- Scheduler -------------------------------------------------------
     // 3 slots a day, in-process. These routes are status + control only: the
     // actual publish is driven by the tick loop, so a POST here never blocks
@@ -341,6 +350,7 @@ const server = createServer(async (req, res) => {
         status: schedulerStatus(),
         slots: listSlots({ date: url.searchParams.get("date") ?? undefined, limit: 100 }),
         trend: trendReport(Number(url.searchParams.get("window") ?? 7) || 7),
+        pool: poolStatus(),
       });
     }
 
