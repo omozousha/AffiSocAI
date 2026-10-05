@@ -18,6 +18,7 @@
  * empty (jj/qwen3.8-flash, gpt-oss). Chain stays overridable.
  */
 import { buildIdentity, detectType } from "./product-identity.ts";
+import { logActivity } from "./activity-log.ts";
 import { typeLabel } from "./product-identity.ts";
 import { BIO_LINE, tagsFor } from "./mystery-caption.ts";
 
@@ -67,6 +68,12 @@ const GENERIC = new Set([
   "universal", "travel", "casual", "outdoor", "indoor", "mini", "big", "new", "hot",
   "pompa", "sepatu", "sneakers", "earbuds", "headphone", "headset", "speaker", "kabel",
   "tas", "dompet", "botol", "tumbler", "laptop", "mouse", "keyboard", "monitor", "ban",
+  // common household/toy/gift nouns — Shopee titles capitalize them, but they
+  // are description words, not brands; rejecting them caused silent fallbacks.
+  "boneka", "lampu", "tidur", "kamar", "jam", "clock", "gift", "kado", "mainan",
+  "capybara", "kapibara", "meja", "dinding", "anak", "lucu", "imut", "lembut",
+  "game", "konsol", "stiker", "case", "kulkas", "kipas", "ac", "helm", "sepeda",
+  "led", "oled", "ips", "usb", "hdmi", "lcd", "rgb", "api", "hd", "fhd", "aqi",
 ]);
 
 /**
@@ -86,7 +93,11 @@ export function brandTokens(product: string | null): string[] {
   words.forEach((w, i) => {
     const lower = w.toLowerCase();
     if (GENERIC.has(lower)) return;
-    if (i > 0 && w.length >= 2 && w === w.toUpperCase() && /[A-Z]/.test(w)) return out.add(lower); // KYT
+    if (w.length >= 2 && w === w.toUpperCase() && /[A-Z]/.test(w)) {
+      // ALL-CAPS is a brand signal even at position 0 ("THTO Boneka ...");
+      // title-case nouns at 0 ("Helm", "Pompa") are excluded by the check itself.
+      return out.add(lower);
+    }
     if (/\d/.test(w) && i > 0) return out.add(lower); // RP-V parts, XF28
     if (w[0] === w[0]?.toUpperCase() && w.length >= 5 && i > 0 && /[a-z]/.test(w.slice(1))) out.add(lower); // Lenovo
   });
@@ -161,8 +172,26 @@ export async function smartCaption(link: {
     if (!out) continue;
     const story = validateStory(out, link.product);
     if (story) return story;
+    // silent fallback cost us a debug cycle (2026-10-05 slot 38908) — say why.
+    logActivity({ level: "warn", source: "system", event: "caption.reject",
+      message: `${model}: AI text failed validator (${whyReject(out, link.product)})` });
   }
   return null;
+}
+
+/** Human-readable first failed rule — mirrors validateStory order. */
+export function whyReject(text: string, product: string | null): string {
+  const paras = text.split(/\n\s*\n/).map((p) => p.replace(/\s+/g, " ").trim()).filter(Boolean);
+  if (paras.length < 3) return "paras<3";
+  const joined = paras.join("\n\n");
+  if (joined.length > 460) return `oversize ${joined.length}`;
+  if (/@|(https?:)?\/\/|^www\./i.test(joined)) return "link/handle";
+  if (/#\w/.test(joined)) return "hashtag-inline";
+  if (/gratis\s*ongkir|diskon|garansi|\brp\s?[\d.]+\b|\b[\d.,]+\s?(rb|ribu|jt|juta)\b|harga\s*[\d,]+|omzet|terlaris|nomor\s*1/i.test(joined)) return "claim/price";
+  if (/\b(sudah\s*(saya|aku)?\s*pakai|testimoni\s*(saya|aku))\b/i.test(joined)) return "personal-claim";
+  const low = joined.toLowerCase();
+  for (const w of brandTokens(product)) if (low.includes(w)) return `spill:${w}`;
+  return "unknown";
 }
 
 /** Compose the final body exactly like the template shape: 3 paras + BIO + tags. */
