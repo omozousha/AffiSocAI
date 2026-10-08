@@ -20,7 +20,7 @@
 import { buildIdentity, detectType } from "./product-identity.ts";
 import { logActivity } from "./activity-log.ts";
 import { typeLabel } from "./product-identity.ts";
-import { BIO_LINE, tagsFor, COMMUNITY_TAG, COMMUNITY_TOPIC } from "./mystery-caption.ts";
+import { BIO_LINE, bioLineFor, tagsFor, COMMUNITY_TAG, COMMUNITY_TOPIC } from "./mystery-caption.ts";
 
 const BASE = process.env.AFFILIATE_ROUTER_BASE_URL || "https://router2nd.realpaytrans.my.id/v1";
 const CHAIN = (process.env.AFFILIATE_SMART_MODEL || "ag/gemini-3.8-flash,ag/gemini-3.7-flash,jj/qwen3.8-flash").split(",");
@@ -199,10 +199,17 @@ export function composeSmartBody(
   story: SmartStory,
   platform: "threads" | "instagram" | "facebook" | "x",
   type: string,
+  sheetId?: number | null,
+  trendingTags: string[] = [],
 ): string {
   // community tag fixed: "Ai Threads" (operator directive 2026-10-05)
-  const tags = [...tagsFor(type), COMMUNITY_TAG].filter((v, i, a) => a.indexOf(v) === i);
+  const baseTags = [...tagsFor(type), COMMUNITY_TAG];
+  const tags = (platform === "instagram" || platform === "facebook"
+    ? [...baseTags, ...trendingTags]
+    : baseTags
+  ).filter((v, i, a) => a.indexOf(v) === i);
   const tagLine = tags.join(" ");
+  const bioLine = bioLineFor(sheetId);
   if (platform === "threads") {
     const full = `${story.hook}\n\n${story.why}\n\n${story.cta}\n\n${BIO_LINE}\n\n${tagLine}`;
     const mid = `${story.hook}\n\n${story.why}\n\n${story.cta}\n\n${BIO_LINE}`;
@@ -210,5 +217,5 @@ export function composeSmartBody(
     // publish paths append ~35 chars of short link — keep 460 like the template ladder
     return [full, mid, short].find((b) => b.length <= 425) ?? short;
   }
-  return `${story.hook}\n\n${story.why}\n\n${story.cta}\n\n${BIO_LINE}\n\n${tagLine}`;
+  return `${story.hook}\n\n${story.why}\n\n${story.cta}\n\n${bioLine}\n\n${tagLine}`;
 }

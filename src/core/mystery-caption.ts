@@ -30,6 +30,13 @@ export type MysteryDraft = {
 
 export const BIO_LINE = "Link & detail lengkap ada di bio.";
 
+export function bioLineFor(sheetId?: number | null): string {
+  if (typeof sheetId === "number" && sheetId > 0) {
+    return `Cek produk No. ${sheetId} di link bio ya!`;
+  }
+  return BIO_LINE;
+}
+
 export function categoryClue(kategori: string | null | undefined): string {
   const k = (kategori || "").toUpperCase();
   const m: Array<[RegExp, string]> = [
@@ -55,7 +62,7 @@ const CHAR_LIMIT: Record<MysteryDraft["platform"], number> = {
   threads: 500,
 };
 
-function igMystery(hook: HookVariant, tags: string[]): string {
+function igMystery(hook: HookVariant, tags: string[], bioLine: string = BIO_LINE): string {
   return [
     hook.open,
     "",
@@ -63,13 +70,13 @@ function igMystery(hook: HookVariant, tags: string[]): string {
     "",
     hook.cta,
     "",
-    BIO_LINE,
+    bioLine,
     "",
     tags.join(" "),
   ].join("\n");
 }
 
-function fbMystery(hook: HookVariant, tags: string[]): string {
+function fbMystery(hook: HookVariant, tags: string[], bioLine: string = BIO_LINE): string {
   return [
     hook.open,
     "",
@@ -77,7 +84,7 @@ function fbMystery(hook: HookVariant, tags: string[]): string {
     "",
     hook.cta,
     "",
-    BIO_LINE,
+    bioLine,
     "",
     tags.join(" "),
   ].join("\n");
@@ -133,8 +140,9 @@ function threadsMystery(hook: HookVariant, tags: string[]): string {
 
 export function buildMysteryCaption(
   platform: MysteryDraft["platform"],
-  link: LinkInfo,
+  link: LinkInfo & { sheet_id?: number | null },
   publishIndex: number = 0,
+  trendingTags: string[] = [],
 ): MysteryDraft {
   const identity = buildIdentity({
     product: (link.product ?? null),
@@ -143,10 +151,14 @@ export function buildMysteryCaption(
   });
   const hook = pickHook(identity, publishIndex);
   const type = detectType(identity);
-  // Hashtag line = product-category tags + the fixed community tag
-  // (operator directive 2026-10-05: "Ai Threads" replaces dynamic trending).
-  const tags = [...tagsFor(type), COMMUNITY_TAG].filter((v, i, a) => a.indexOf(v) === i);
+  // Hashtag line = product-category tags + the fixed community tag + trending tags (IG/FB)
+  const baseTags = [...tagsFor(type), COMMUNITY_TAG];
+  const tags = (platform === "instagram" || platform === "facebook"
+    ? [...baseTags, ...trendingTags]
+    : baseTags
+  ).filter((v, i, a) => a.indexOf(v) === i);
   const constraints: string[] = [];
+  const bioLine = bioLineFor(link.sheet_id);
 
   let body = "";
   let topic: string | null = null;
@@ -160,10 +172,10 @@ export function buildMysteryCaption(
     body = threadsMystery(hook, tags);
   } else if (platform === "instagram") {
     hashtags = tags;
-    body = igMystery(hook, tags);
+    body = igMystery(hook, tags, bioLine);
   } else if (platform === "facebook") {
     hashtags = tags;
-    body = fbMystery(hook, tags);
+    body = fbMystery(hook, tags, bioLine);
   } else {
     hashtags = tags;
     body = threadsMystery(hook, tags);
@@ -177,7 +189,7 @@ export function buildMysteryCaption(
   return {
     platform,
     body,
-    bio_line: BIO_LINE,
+    bio_line: bioLine,
     topic,
     hashtags,
     constraints

@@ -29,6 +29,8 @@ export type LinkInfo = {
   image_url?: string | null;
   /** AI-guessed product category (16 fixed labels), null when unknown. */
   kategori?: string | null;
+  /** Bio-link sheet row number — lets the caption tell viewers which item to find. */
+  sheet_id?: number | null;
 };
 
 export type Draft = {

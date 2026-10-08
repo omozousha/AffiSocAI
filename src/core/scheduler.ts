@@ -33,7 +33,7 @@ import { buildIdentity, detectType } from "./product-identity.ts";
 import { imagePromptFor, setHookPerf } from "./product-hook.ts";
 import { aggregatePerf, HOOK_PERF_KEY } from "./hook-perf.ts";
 import { buildMysteryCaption, MYSTERY_PLATFORMS, topicFor } from "./mystery-caption.ts";
-import { fetchTopTrends } from "./trends.ts";
+import { fetchTopTrends, cachedTrends } from "./trends.ts";
 import { smartCaption, composeSmartBody } from "./smart-caption.ts";
 import { listProviders, getProvider } from "./registry.ts";
 import { logActivity } from "./activity-log.ts";
@@ -702,6 +702,7 @@ async function preparePost(slot: SlotRow): Promise<PreparedPost> {
     { product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null },
   );
   if (story) logActivity({ level: "info", source: "system", event: "caption.smart", message: `link ${link.id}: AI story (${story.hook.slice(0, 40)}…) for all ${targets.length} platforms` });
+  const trendTags = cachedTrends(2).map((t) => t.tag);
   const prepared: PreparedPost = { link_id: link.id, targets: [] };
   for (const target of targets) {
     let draft = buildMysteryCaption(target.platform, {
@@ -713,8 +714,9 @@ async function preparePost(slot: SlotRow): Promise<PreparedPost> {
       product: link.product,
       image_url: link.image_url,
       kategori: link.kategori ?? null,
-    }, publishIndex);
-    if (story) draft = { ...draft, body: composeSmartBody(story, target.platform, detectType(idForImg)) };
+      sheet_id: link.sheet_id ?? null,
+    }, publishIndex, trendTags);
+    if (story) draft = { ...draft, body: composeSmartBody(story, target.platform, detectType(idForImg), link.sheet_id ?? null, trendTags) };
 
     let text = draft.body;
     if (target.platform === "threads" && link.short_url && !text.includes(link.short_url)) {

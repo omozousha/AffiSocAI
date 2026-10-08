@@ -676,12 +676,14 @@ const server = createServer(async (req, res) => {
       // Smart caption first (same rule as the scheduler); template on any miss.
       const { buildIdentity, detectType } = await import("../core/product-identity.ts");
       const { smartCaption, composeSmartBody } = await import("../core/smart-caption.ts");
+      const { cachedTrends } = await import("../core/trends.ts");
+      const trendTags = cachedTrends(2).map((t) => t.tag);
       const id = buildIdentity({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null });
       const story = await smartCaption({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null });
       const typeId = detectType(id);
       const drafts = platforms.map((p: MysteryDraft["platform"]) => {
-        const d = buildMysteryCaption(p, link, idx);
-        return story ? { ...d, body: composeSmartBody(story, p, typeId) } : d;
+        const d = buildMysteryCaption(p, link, idx, trendTags);
+        return story ? { ...d, body: composeSmartBody(story, p, typeId, link.sheet_id ?? null, trendTags) } : d;
       });
       const mediaUrl = link.image_url ?? null;
       return json(res, 200, {
@@ -937,7 +939,9 @@ const server = createServer(async (req, res) => {
       if (ready.length === 0) return json(res, 502, { error: "no publishable platform: every provider is disconnected or cannot post media" });
       const target = (want ? ready.find((t) => t.key === want) : ready[0]) ?? null;
       if (!target) return json(res, 400, { error: `platform ${want} is not publishable (ready: ${ready.map((t) => t.key).join(",")})` });
-      const draft = buildMysteryCaption(target.key, link as Parameters<typeof buildMysteryCaption>[1], Number(link.published_count ?? 0));
+      const { cachedTrends } = await import("../core/trends.ts");
+      const trendTags = cachedTrends(2).map((t) => t.tag);
+      const draft = buildMysteryCaption(target.key, link as Parameters<typeof buildMysteryCaption>[1], Number(link.published_count ?? 0), trendTags);
       const { buildIdentity, detectType } = await import("../core/product-identity.ts");
       const { topicFor } = await import("../core/mystery-caption.ts");
       // Smart caption (AI) on the manual publish path too — same rule as the
@@ -946,7 +950,7 @@ const server = createServer(async (req, res) => {
       let finalBody = draft.body;
       {
         const story = await smartCaption({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null });
-        if (story) finalBody = composeSmartBody(story, target.key, detectType(buildIdentity({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null })));
+        if (story) finalBody = composeSmartBody(story, target.key, detectType(buildIdentity({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null })), link.sheet_id ?? null, trendTags);
       }
       // Post the generated product image, not the raw Shopee CDN photo. A link
       // that never went through Recreate still points at susercontent — run it
