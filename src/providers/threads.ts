@@ -421,7 +421,18 @@ export class ThreadsAdapter implements SocialProvider {
       }
       return { postId, metrics };
     } catch {
-      return { postId, metrics: {} };
+      // Fallback: if threads_manage_insights scope is missing on Meta app,
+      // fallback to basic /replies count with granted threads_read_replies scope
+      try {
+        const rep = await graphGet(`/v1.0/${postId}/replies`, {
+          fields: "id",
+          access_token: await accessToken(),
+        });
+        const count = Array.isArray(rep.data) ? rep.data.length : 0;
+        return { postId, metrics: { replies: count, views: 0, likes: 0 } };
+      } catch {
+        return { postId, metrics: {} };
+      }
     }
   }
 
