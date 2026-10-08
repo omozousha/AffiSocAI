@@ -35,6 +35,7 @@ import {
   runSlotNow,
   startScheduler,
   poolStatus,
+  engagementInsights,
 } from "../core/scheduler.ts";
 import {
   listActivity, listActivitySince,
@@ -410,6 +411,15 @@ const server = createServer(async (req, res) => {
     /** Rebuild today's (and tomorrow's) slots — used after editing slot_times. */
     if (req.method === "POST" && url.pathname === "/api/schedule/refresh") {
       return json(res, 200, { created: ensureHorizon(2), status: schedulerStatus() });
+    }
+
+    /**
+     * Engagement Learning Engine insight — top hooks ranked by Bayesian
+     * score + last refresh stamp. Read-only, consumed by the UI.
+     *   GET /api/engagement/insights
+     */
+    if (req.method === "GET" && url.pathname === "/api/engagement/insights") {
+      return json(res, 200, engagementInsights());
     }
 
     /** Live scheduler health — consumed by the Jadwal route's status dot. */

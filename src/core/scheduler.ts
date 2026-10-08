@@ -204,6 +204,14 @@ export function engagementTopHooks(): { hook: string; score: number; posts: numb
   }
 }
 
+/** Snapshot for the API/UI: last refresh stamp + current top-hook ranking. */
+export function engagementInsights(): {
+  updated_at: string | null;
+  top_hooks: { hook: string; score: number; posts: number }[];
+} {
+  return { updated_at: metaGet("engagement_perf_last"), top_hooks: engagementTopHooks() ?? [] };
+}
+
 /** Effective slot times, in local time. Stored as "HH:MM,HH:MM,HH:MM". */
 export function slotTimes(): string[] {
   const raw = metaGet("slot_times") || DEFAULT_SLOT_TIMES.join(",");
