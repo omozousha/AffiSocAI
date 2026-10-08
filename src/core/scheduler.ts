@@ -32,6 +32,7 @@ import { listLinks, getLink, addContent, listContent, setContentStatus, syncLink
 import { buildIdentity, detectType } from "./product-identity.ts";
 import { imagePromptFor, setHookPerf } from "./product-hook.ts";
 import { aggregatePerf, HOOK_PERF_KEY } from "./hook-perf.ts";
+import { getTopHooksForPrompt, chooseFewShotHooks, type RankedHook } from "./engagement-engine.ts";
 import { buildMysteryCaption, MYSTERY_PLATFORMS, topicFor } from "./mystery-caption.ts";
 import { fetchTopTrends, cachedTrends } from "./trends.ts";
 import { smartCaption, composeSmartBody } from "./smart-caption.ts";
@@ -149,6 +150,58 @@ function refreshHookPerf(now: Date): void {
   setHookPerf(JSON.stringify(perf));
   const types = Object.keys(perf).length;
   if (types > 0) logActivity({ level: "info", source: "system", event: "hook.perf", message: `aggregated ${rows.length} metric posts into ${types} type buckets` });
+}
+
+/**
+ * Engagement Learning Engine — daily refresh.
+ *
+ * The old refreshHookPerf above only fed product-hook's static template
+ * variants (score = reach + 2*engagement, no weights). This one aggregates the
+ * SAME post_metrics rows with the weighted ES formula and publishes the top
+ * hooks so smart-caption.ts can inject them as few-shot examples. Both run
+ * side by side: templates keep rotating, AI captions get real signal.
+ */
+function refreshEngagementPerf(now: Date): void {
+  const last = metaGet("engagement_perf_last") ?? "";
+  if (last.slice(0, 10) === dayKey(now)) return;
+  const rows = db
+    .prepare(
+      `SELECT c.body b, m.metrics m, l.product p, l.kategori k
+       FROM post_metrics m JOIN content c ON c.id = m.content_id
+       LEFT JOIN links l ON l.id = c.link_id
+       WHERE c.status = 'published' AND c.created_at > datetime('now','-30 days')`,
+    )
+    .all() as unknown as { b: string; m: string; p: string | null; k: string | null }[];
+  const metricRows = rows.map((r) => ({
+    body: r.b,
+    metrics_json: r.m,
+    product: r.p,
+    kategori: r.k,
+  }));
+  const top = getTopHooksForPrompt(metricRows, 5);
+  metaSet("engagement_perf", JSON.stringify(top));
+  metaSet("engagement_perf_last", now.toISOString());
+  if (top.length > 0) {
+    logActivity({
+      level: "info",
+      source: "system",
+      event: "engagement.learn",
+      message: `top hooks: ${top.slice(0, 3).map((h: RankedHook) => h.hook.slice(0, 28)).join(" | ")}`,
+      meta: { top: top.length, rows: rows.length },
+    });
+  }
+}
+
+/** Top hooks for smart-caption few-shot injection (null = no signal yet). */
+export function engagementTopHooks(): { hook: string; score: number; posts: number }[] | null {
+  const raw = metaGet("engagement_perf");
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Effective slot times, in local time. Stored as "HH:MM,HH:MM,HH:MM". */
@@ -700,8 +753,13 @@ async function preparePost(slot: SlotRow): Promise<PreparedPost> {
   // reject / AFFILIATE_SMART_CAPTION=0) = template draft exactly as before.
   const story = await smartCaption(
     { product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null },
+    chooseFewShotHooks(engagementTopHooks() ?? []),
   );
-  if (story) logActivity({ level: "info", source: "system", event: "caption.smart", message: `link ${link.id}: AI story (${story.hook.slice(0, 40)}…) for all ${targets.length} platforms` });
+  if (story) {
+    const used = chooseFewShotHooks(engagementTopHooks() ?? []);
+    logActivity({ level: "info", source: "system", event: "caption.smart",
+      message: `link ${link.id}: AI story (${story.hook.slice(0, 40)}…) for all ${targets.length} platforms${used.length > 0 ? ` [few-shot: ${used.length} hooks]` : ""}` });
+  }
   const trendTags = cachedTrends(2).map((t) => t.tag);
   const prepared: PreparedPost = { link_id: link.id, targets: [] };
   for (const target of targets) {
@@ -986,6 +1044,10 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
   try {
     refreshHookPerf(now);
   } catch { /* advisory — rotation continues without perf signal */ }
+  // Engagement learning engine — daily top-hook ranking for smart-caption.
+  try {
+    refreshEngagementPerf(now);
+  } catch { /* advisory — AI captions continue without few-shot signal */ }
 
   // Link health: daily sweep (meta-gated, cheap probe per link ~1s). A dead
   // affiliate link = zero commission; never post one. First pass runs at boot.

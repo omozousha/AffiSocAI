@@ -147,25 +147,41 @@ async function callModel(model: string, user: string, key: string): Promise<stri
   }
 }
 
+/** Format the user prompt for the completion model, with optional few-shot hooks. */
+export function formatUserPrompt(
+  link: { product: string | null; kategori: string | null; shop?: string | null },
+  clue: string,
+  fewShotHooks: string[] = [],
+): string {
+  let prompt =
+    `Produk: ${link.product || clue} (kategori ${link.kategori || clue}).\n` +
+    `Topik komunitas untuk CTA (sebut "Ai Threads" sebagai tempat sharing, jangan jadi hashtag): ${COMMUNITY_TOPIC}.\n`;
+  if (fewShotHooks && fewShotHooks.length > 0) {
+    prompt += `Contoh hook pembuka yang terbukti disukai audiens (jadikan referensi gaya, JANGAN copy persis):\n${fewShotHooks.map((h) => `- "${h}"`).join("\n")}\n`;
+  }
+  prompt += `Tulis 3 paragraf. Nama/merk produk di atas TIDAK BOLEH muncul di tulisan.`;
+  return prompt;
+}
+
 /**
  * One AI story for the slot's link. Null = caller falls back to template.
  * Trends enter only as context words (the tag LINE is built by composeSmartBody
  * with the same dedupe rules as the template).
  */
-export async function smartCaption(link: {
-  product: string | null;
-  kategori: string | null;
-  shop?: string | null;
-}): Promise<SmartStory | null> {
+export async function smartCaption(
+  link: {
+    product: string | null;
+    kategori: string | null;
+    shop?: string | null;
+  },
+  fewShotHooks: string[] = [],
+): Promise<SmartStory | null> {
   const key = process.env.AFFILIATE_ROUTER_KEY;
   if (!key || process.env.AFFILIATE_SMART_CAPTION === "0") return null;
   const id = buildIdentity({ product: link.product, kategori: link.kategori, shop: link.shop ?? null });
   const type = detectType(id);
   const clue = typeLabel(type);
-  const user =
-    `Produk: ${link.product || clue} (kategori ${link.kategori || clue}).\n` +
-    `Topik komunitas untuk CTA (sebut "Ai Threads" sebagai tempat sharing, jangan jadi hashtag): ${COMMUNITY_TOPIC}.\n` +
-    `Tulis 3 paragraf. Nama/merk produk di atas TIDAK BOLEH muncul di tulisan.`;
+  const user = formatUserPrompt(link, clue, fewShotHooks);
   void id;
   for (const model of CHAIN) {
     const out = await callModel(model.trim(), user, key);

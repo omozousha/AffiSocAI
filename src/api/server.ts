@@ -677,9 +677,12 @@ const server = createServer(async (req, res) => {
       const { buildIdentity, detectType } = await import("../core/product-identity.ts");
       const { smartCaption, composeSmartBody } = await import("../core/smart-caption.ts");
       const { cachedTrends } = await import("../core/trends.ts");
+      const { engagementTopHooks } = await import("../core/scheduler.ts");
+      const { chooseFewShotHooks } = await import("../core/engagement-engine.ts");
       const trendTags = cachedTrends(2).map((t) => t.tag);
+      const fewShot = chooseFewShotHooks(engagementTopHooks() ?? []);
       const id = buildIdentity({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null });
-      const story = await smartCaption({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null });
+      const story = await smartCaption({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null }, fewShot);
       const typeId = detectType(id);
       const drafts = platforms.map((p: MysteryDraft["platform"]) => {
         const d = buildMysteryCaption(p, link, idx, trendTags);
@@ -947,9 +950,12 @@ const server = createServer(async (req, res) => {
       // Smart caption (AI) on the manual publish path too — same rule as the
       // scheduler; any miss keeps the template body byte-identical to before.
       const { smartCaption, composeSmartBody } = await import("../core/smart-caption.ts");
+      const { engagementTopHooks } = await import("../core/scheduler.ts");
+      const { chooseFewShotHooks } = await import("../core/engagement-engine.ts");
       let finalBody = draft.body;
       {
-        const story = await smartCaption({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null });
+        const fewShot = chooseFewShotHooks(engagementTopHooks() ?? []);
+        const story = await smartCaption({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null }, fewShot);
         if (story) finalBody = composeSmartBody(story, target.key, detectType(buildIdentity({ product: link.product ?? null, kategori: link.kategori ?? null, shop: link.shop ?? null })), link.sheet_id ?? null, trendTags);
       }
       // Post the generated product image, not the raw Shopee CDN photo. A link
