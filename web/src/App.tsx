@@ -13,6 +13,8 @@ import Links from "./routes/Links";
 import Konten from "./routes/Konten";
 import Sosmed from "./routes/Sosmed";
 import Logs from "./routes/Logs";
+import PipelineWizard from "./routes/wizard/PipelineWizard";
+import { StatusRail } from "./rail/StatusRail";
 
 
 function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
@@ -168,6 +170,8 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
           <div className="mx-auto max-w-5xl">
             {route === "dashboard" ? (
               <Dashboard go={go} />
+            ) : route === "wizard" ? (
+              <PipelineWizard />
             ) : route === "jadwal" ? (
               <Jadwal />
             ) : route === "links" ? (
@@ -182,6 +186,9 @@ function AppShell({ user, onLogout }: { user: string; onLogout: () => void }) {
           </div>
         </main>
       </div>
+
+      {/* Status Rail — sticky kanan, xl+ only; offline = badge, never crash host */}
+      <StatusRail go={go} />
     </div>
   );
 }

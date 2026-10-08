@@ -1,6 +1,6 @@
 // Hash routing: URL is the single source of truth for the active route.
 // Deep-link, reload and browser-back all work through `#/logs` style hashes.
-export const ROUTE_IDS = ["dashboard", "links", "konten", "sosmed", "jadwal", "logs"] as const;
+export const ROUTE_IDS = ["dashboard", "wizard", "links", "konten", "sosmed", "jadwal", "logs"] as const;
 export type RouteId = (typeof ROUTE_IDS)[number];
 
 const VALID = new Set<string>(ROUTE_IDS);
