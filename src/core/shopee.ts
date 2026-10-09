@@ -54,7 +54,13 @@ export async function fetchOg(url: string, timeoutMs = 20000): Promise<OgMeta> {
 
 export type ResolveResult = {
   ok: boolean;
-  /** Final URL after redirects, with tracking params kept as-is. */
+  /**
+   * Canonical product URL: https://shopee.co.id/product/<shop>/<item>.
+   * Deliberately NOT the redirect target verbatim — that target carries a
+   * 600+ char query string of affiliate/voucher/gads tracking params that
+   * expire, so it rots as a stored identity. The compact form resolves to the
+   * same product and is stable.
+   */
   resolved_url: string | null;
   shopee_shop_id: string | null;
   shopee_item_id: string | null;
@@ -104,9 +110,11 @@ export async function resolveShopeeUrl(url: string, timeoutMs = 15000): Promise<
       }
     }
     if (!itemId) {
-      return { ok: false, resolved_url: effective, shopee_shop_id: null, shopee_item_id: null, reason: "no item id in redirect target" };
+      return { ok: false, resolved_url: null, shopee_shop_id: null, shopee_item_id: null, reason: "no item id in redirect target" };
     }
-    return { ok: true, resolved_url: effective, shopee_shop_id: shopId, shopee_item_id: itemId, reason: null };
+    // Compact canonical form — stable identifier, no volatile affiliate params.
+    const canonical = `https://shopee.co.id/product/${shopId}/${itemId}`;
+    return { ok: true, resolved_url: canonical, shopee_shop_id: shopId, shopee_item_id: itemId, reason: null };
   } catch (e) {
     return { ok: false, resolved_url: null, shopee_shop_id: null, shopee_item_id: null, reason: String(e).slice(0, 200) };
   }
