@@ -166,16 +166,16 @@ export class InstagramAdapter implements SocialProvider {
 
   async getPostStatus(postId: string): Promise<PostStatus> {
     // Proven discriminator: a LIVE media answers fields=id,caption; an
-    // unpublished container errors on caption (id-only works for both).
+    // unpublished container can error on caption; permalink stays useful.
     // permalink is added so the scheduler can backfill post_url later.
     try {
       const m = await composio.execute("INSTAGRAM_GET_IG_MEDIA", {
         ig_media_id: String(postId),
-        fields: "id,caption,permalink",
+        fields: "id,permalink,caption",
       });
-      if (m.ok && m.data?.id && typeof m.data?.caption === "string") {
-        const perma = typeof m.data.permalink === "string" ? m.data.permalink : undefined;
-        return { postId, state: "published", detail: perma ?? "caption readable" };
+      const perma = typeof m.data?.permalink === "string" ? m.data.permalink : undefined;
+      if (m.ok && m.data?.id && perma) {
+        return { postId, state: "published", detail: perma };
       }
       return { postId, state: "failed", detail: String(m.error ?? JSON.stringify(m.data)).slice(0, 200) };
     } catch (e) { return { postId, state: "unknown", detail: String(e).slice(0, 160) }; }

@@ -1205,6 +1205,12 @@ async function backfillPermalinks(): Promise<void> {
   const now = Date.now();
   const missing = listContent()
     .filter((c) => c.status === "published" && c.post_id && !c.post_url)
+    // Proven 2026-10-09: content 16-27 (Sep 26) have post_ids whose Media node
+    // answers id-only — caption/permalink/like_count ALL rejected. The media
+    // does not exist on Meta; no retry will ever fill post_url. Rows older
+    // than 7 days are permanent misses — drop them instead of parking on the
+    // 30-min cooldown forever.
+    .filter((c) => Date.now() - Date.parse(c.created_at) < 7 * 24 * 60 * 60 * 1000)
     .sort((a, b) => b.id - a.id)
     .filter((c) => now - (permalinkFailCooldown.get(c.id) ?? 0) > PERMALINK_RETRY_MS)
     .slice(0, 5);
