@@ -84,8 +84,8 @@ const GENERIC = new Set([
   "digital", "elektrik", "listrik", "daya", "watt", "baterai", "battery", "charger",
   "alat", "mesin", "pembersih", "penghisap", "vacuum", "proyektor", "projector",
   "humidifier", "diffuser", "sterilizer", "blender", "mixer", "juicer", "teko",
-  "panci", "pemanas", "penghangat", "rak", "sofa", "duduk", "lipat", "camping",
-  "koper", "tas", "botol", "tumbler", "mainan", "boneka",
+  "panci", "pemanas", "penghangat", "rak", "sofa", "kursi", "duduk", "lipat", "camping",
+  "koper", "tas", "botol", "tumbler", "mainan", "boneka", "bantal", "kasur", "matras",
 ]);
 
 /**

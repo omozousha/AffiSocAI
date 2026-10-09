@@ -165,13 +165,14 @@ export class InstagramAdapter implements SocialProvider {
   }
 
   async getPostStatus(postId: string): Promise<PostStatus> {
-    // Proven discriminator: a LIVE media answers fields=id,caption; an
-    // unpublished container can error on caption; permalink stays useful.
-    // permalink is added so the scheduler can backfill post_url later.
+    // Proven discriminator: a LIVE media answers fields=id,permalink; an
+    // unpublished container errors on permalink. `caption` is NOT requested:
+    // Instagram's Media node rejects it (composio.failed storm, 490 hits/24h)
+    // and it is not needed to decide published vs processing.
     try {
       const m = await composio.execute("INSTAGRAM_GET_IG_MEDIA", {
         ig_media_id: String(postId),
-        fields: "id,permalink,caption",
+        fields: "id,permalink",
       });
       const perma = typeof m.data?.permalink === "string" ? m.data.permalink : undefined;
       if (m.ok && m.data?.id && perma) {
