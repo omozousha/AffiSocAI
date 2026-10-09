@@ -37,6 +37,7 @@ import {
   poolStatus,
   engagementInsights,
   getSelfAuditMeta,
+  getSlotProposalMeta,
 } from "../core/scheduler.ts";
 import {
   listActivity, listActivitySince,
@@ -421,6 +422,10 @@ const server = createServer(async (req, res) => {
      */
     if (req.method === "GET" && url.pathname === "/api/engagement/insights") {
       return json(res, 200, engagementInsights());
+    }
+    // Lingkup 5 — next-day slot proposal (read-only; apply via POST).
+    if (req.method === "GET" && url.pathname === "/api/slot/proposal") {
+      return json(res, 200, getSlotProposalMeta());
     }
     // Lingkup 1 — self-audit snapshot (AI text + deterministic numbers).
     if (req.method === "GET" && url.pathname === "/api/self-analyst") {

@@ -209,7 +209,14 @@ export function getSelfAuditMeta(): { updated_at: string | null; summary: unknow
   const raw = metaGet("self_audit_latest");
   if (!raw) return { updated_at: null, summary: null };
   try { return { updated_at: metaGet("self_audit_last"), summary: JSON.parse(raw) as unknown }; }
-  catch { return { updated_at: null, summary: null }; }
+  catch { return { updated_at: metaGet("self_audit_last"), summary: null }; }
+}
+
+export function getSlotProposalMeta(): { updated_at: string | null; proposal: unknown } {
+  const raw = metaGet("slot_proposal");
+  if (!raw) return { updated_at: null, proposal: null };
+  try { return { updated_at: metaGet("slot_proposal_day"), proposal: JSON.parse(raw) as unknown }; }
+  catch { return { updated_at: metaGet("slot_proposal_day"), proposal: null }; }
 }
 
 export function engagementInsights(): {
@@ -257,6 +264,19 @@ function atTime(day: string, hhmm: string): Date {
   const [h, m] = hhmm.split(":").map(Number);
   const [y, mo, d] = day.split("-").map(Number);
   return new Date(y, mo - 1, d, h, m, 0, 0);
+}
+
+function nearestSlot(timeHHMM: string, slots: string[]): string {
+  const [th, tm] = timeHHMM.split(":").map(Number);
+  const target = th * 60 + tm;
+  let best = slots[0];
+  let minDiff = 1440;
+  for (const s of slots) {
+    const [sh, sm] = s.split(":").map(Number);
+    const diff = Math.abs(sh * 60 + sm - target);
+    if (diff < minDiff) { minDiff = diff; best = s; }
+  }
+  return best;
 }
 
 /**
@@ -1174,6 +1194,43 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
       });
     }
   } catch { /* advisory — ranking continues with current weights */ }
+
+  // Lingkup 5 — next-day slot proposal (nightly, propose-only).
+  // Runs once per day after midnight. Reads 7d engagement per slot, writes a
+  // proposal to scheduler_meta['slot_proposal']. NEVER mutates slot_times —
+  // the operator reviews and applies via POST /api/scheduler/slots.
+  try {
+    const { proposeNextDaySlots } = await import("./slot-scheduler.ts");
+    const dayKey = now.toISOString().slice(0, 10);
+    if ((metaGet("slot_proposal_day") ?? "") !== dayKey) {
+      const current = slotTimes();
+      // Aggregate engagement per slot over the last 7 days.
+      const obsMap = new Map<string, { eng: number; posts: number }>();
+      for (const slot of current) obsMap.set(slot, { eng: 0, posts: 0 });
+      for (const r of metricsWithPostTime(7)) {
+        const hour = new Date(r.created_at).getUTCHours();
+        const min = new Date(r.created_at).getUTCMinutes();
+        const key = `${String(hour).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+        const slot = nearestSlot(key, current);
+        if (!slot) continue;
+        const m = JSON.parse(r.metrics) as Record<string, number>;
+        const eng = calculateEngagementScore(m, { ...DEFAULT_WEIGHTS, ...(JSON.parse(metaGet("engagement_weights") ?? "{}") as Partial<EngagementWeights>) });
+        const b = obsMap.get(slot);
+        if (b) { b.eng += eng; b.posts += 1; }
+      }
+      const observations = [...obsMap.entries()].map(([slot, v]) => ({ slot, eng: v.eng, posts: v.posts }));
+      const proposal = proposeNextDaySlots(current, observations);
+      metaSet("slot_proposal", JSON.stringify(proposal));
+      metaSet("slot_proposal_day", dayKey);
+      if (proposal.shifts.length > 0) {
+        logActivity({
+          level: "info", source: "system", event: "slot.propose",
+          message: `Usulan slot besok: ${proposal.proposed.join(", ")} — ${proposal.reason}`,
+          meta: { shifts: proposal.shifts },
+        });
+      }
+    }
+  } catch { /* advisory — slots stay as-is */ }
 
   // Link health: daily sweep (meta-gated, cheap probe per link ~1s). A dead
   // affiliate link = zero commission; never post one. First pass runs at boot.
