@@ -212,6 +212,39 @@ export function getSelfAuditMeta(): { updated_at: string | null; summary: unknow
   catch { return { updated_at: metaGet("self_audit_last"), summary: null }; }
 }
 
+/**
+ * Lingkup 5 — operator approves the proposal: apply proposed slots.
+ * Reads the stored proposal, writes it to slot_times, marks applied,
+ * snapshots the previous slots for rollback, logs the decision.
+ */
+export function applySlotProposalNow(): { applied: boolean; times: string[]; previous: string[]; reason: string } {
+  const raw = metaGet("slot_proposal");
+  if (!raw) throw new Error("no slot proposal available yet — run /api/slot/proposal first");
+  let proposal: { proposed: string[]; current: string[]; reason: string };
+  try {
+    proposal = JSON.parse(raw) as typeof proposal;
+  } catch {
+    throw new Error("stored slot proposal is corrupt");
+  }
+  const previous = slotTimes();
+  if (proposal.proposed.length === 0) throw new Error("proposal has no slots to apply");
+  // Snapshot for rollback (Lingkup 5 auto-rollback reads this).
+  metaSet("slot_times_previous", previous.join(","));
+  metaSet("slot_applied_day", dayKey(new Date()));
+  setSlotTimes(proposal.proposed);
+  // Mark proposal applied so the API stops returning applied:false.
+  const stamped = { ...proposal, applied: true };
+  metaSet("slot_proposal", JSON.stringify(stamped));
+  logActivity({
+    level: "info",
+    source: "operator",
+    event: "slot.applied",
+    message: `Operator approve: slot ${previous.join(", ")} → ${proposal.proposed.join(", ")}. ${proposal.reason}`,
+    meta: { previous, applied: proposal.proposed },
+  });
+  return { applied: true, times: proposal.proposed, previous, reason: proposal.reason };
+}
+
 export function getSlotProposalMeta(): { updated_at: string | null; proposal: unknown } {
   const raw = metaGet("slot_proposal");
   if (!raw) return { updated_at: null, proposal: null };

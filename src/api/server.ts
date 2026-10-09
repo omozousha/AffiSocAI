@@ -38,6 +38,7 @@ import {
   engagementInsights,
   getSelfAuditMeta,
   getSlotProposalMeta,
+  applySlotProposalNow,
 } from "../core/scheduler.ts";
 import {
   listActivity, listActivitySince,
@@ -426,6 +427,20 @@ const server = createServer(async (req, res) => {
     // Lingkup 5 — next-day slot proposal (read-only; apply via POST).
     if (req.method === "GET" && url.pathname === "/api/slot/proposal") {
       return json(res, 200, getSlotProposalMeta());
+    }
+    // Lingkup 5 — operator approval: apply the stored proposal to slot_times.
+    // Requires explicit POST with {"approved": true}; never fires implicitly.
+    if (req.method === "POST" && url.pathname === "/api/slot/apply") {
+      const body = (await readBody(req)) as unknown as { approved?: boolean };
+      if (body.approved !== true) {
+        return json(res, 400, { error: 'approval required — send {"approved": true}' });
+      }
+      try {
+        const out = applySlotProposalNow();
+        return json(res, 200, { ok: true, ...out, status: schedulerStatus() });
+      } catch (e) {
+        return json(res, 400, { error: String(e).slice(0, 200) });
+      }
     }
     // Lingkup 1 — self-audit snapshot (AI text + deterministic numbers).
     if (req.method === "GET" && url.pathname === "/api/self-analyst") {
