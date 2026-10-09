@@ -56,8 +56,29 @@ function identityFacts(productLabel: string): string {
   if (name.includes("tas") || name.includes("backpack") || name.includes("ransel")) {
     return "The product is a bag/backpack — keep the main compartment shape, straps, zippers, and pocket layout exactly as in the reference image";
   }
-  if (name.includes("sepatu") || name.includes("sneaker") || name.includes("shoes")) {
+  if (name.includes("sepatu") || name.includes("sneaker") || name.includes("shoes") || name.includes("sandal")) {
     return "The product is footwear — keep the sole pattern, upper material, lacing, and silhouette exactly as in the reference image";
+  }
+  if (name.includes("case") || name.includes("charger") || name.includes("kabel") || name.includes("cable") || name.includes("power") || name.includes("holder") || name.includes("speaker") || name.includes("earphone") || name.includes("headset") || name.includes("lampu") || name.includes("kipas") || name.includes("mouse") || name.includes("keyboard")) {
+    return "The product is a small electronic accessory — keep the exact port/connector type and count, button placement, cable shape, surface finish (matte vs glossy) and colour as in the reference image";
+  }
+  if (name.includes("kaos") || name.includes("kemeja") || name.includes("jaket") || name.includes("hoodie") || name.includes("celana") || name.includes("dress") || name.includes("gamis") || name.includes("baju") || name.includes("kemeja") || name.includes("switer") || name.includes("sweater") || name.includes("rokbaju")) {
+    return "The product is a garment — keep the exact neckline shape, sleeve length, cut/silhouette, fabric texture, print pattern placement and stitching color as in the reference image";
+  }
+  if (name.includes("serum") || name.includes("krim") || name.includes("cream") || name.includes("toner") || name.includes("masker") || name.includes("shampoo") || name.includes("sabun") || name.includes("sunscreen") || name.includes("lipstik") || name.includes("parfum")) {
+    return "The product is a skincare/beauty item — keep the exact bottle/jar/tube shape, cap style, pump vs dropper mechanism, label layout and product color as in the reference image";
+  }
+  if (name.includes("mainan") || name.includes("puzzle") || name.includes("lego") || name.includes("boneka") || name.includes("puzzle")) {
+    return "The product is a toy — keep the exact character shape, face expression, limb count/pose, color blocking and any printed artwork exactly as in the reference image";
+  }
+  if (name.includes("matras") || name.includes("dumbbell") || name.includes("olahraga") || name.includes("gym") || name.includes("yoga") || name.includes("sepeda") || name.includes("skipping")) {
+    return "The product is sports/fitness equipment — keep the exact shape, grip texture, dimension proportions, adjustment mechanism and color scheme as in the reference image";
+  }
+  if (name.includes("tend") || name.includes("carrier") || name.includes("matras gunung") || name.includes("headlamp") || name.includes("jaket gunung") || name.includes("carrier") || name.includes("sleeping")) {
+    return "The product is outdoor gear — keep the exact panel layout, pole/buckle/strap hardware, seam lines, color blocking and size proportions as in the reference image";
+  }
+  if (name.includes("lampu") || name.includes("rak") || name.includes("gantungan") || name.includes("vas") || name.includes("karpet") || name.includes("rak") || name.includes("gorden") || name.includes("sarung") || name.includes("selimut") || name.includes("spray") || name.includes("wadah") || name.includes("kotak")) {
+    return "The product is a home/living item — keep the exact form, material look (fabric/wood/ceramic/plastic), color, dimensions proportion and any printed pattern exactly as in the reference image";
   }
   return "the product's exact design, colours, labels, printed text, proportions and materials as shown in the reference image — nothing re-drawn, re-coloured or re-branded";
 }
