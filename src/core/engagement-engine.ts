@@ -48,19 +48,83 @@ export const SMOOTH_PRIOR = 3;
 export const MIN_SAMPLE = 3;
 
 /**
+ * Tunable weights — default reflects "hard to earn" ordering. Persisted in
+ * scheduler_meta['engagement_weights'] and adjusted by the Lingkup 4
+ * self-tuning job (max ±20% per iteration, auto-rollback on 2 drawdowns).
+ */
+export interface EngagementWeights {
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+}
+
+export const DEFAULT_WEIGHTS: EngagementWeights = { views: 1, likes: 3, comments: 5, shares: 7 };
+
+/** Max relative shift allowed in a single tuning iteration (Lingkup 4 pagar). */
+export const MAX_WEIGHT_SHIFT = 0.20;
+
+/** Consecutive drawdown periods that force a rollback to DEFAULT_WEIGHTS. */
+export const ROLLBACK_DRAWDOWN_PERIODS = 2;
+
+function clampShift(current: number, target: number, max: number): number {
+  const ceiling = current * (1 + max);
+  const floor = Math.max(0, current * (1 - max));
+  return Math.min(ceiling, Math.max(floor, target));
+}
+
+/**
  * Weighted engagement score for one post.
  *
  * Views are reach, not engagement — they earn the lowest weight. Comments and
  * shares are the expensive signals: a share broadcasts the post, a comment
  * means the viewer stopped. Those carry 7x and 5x.
  */
-export function calculateEngagementScore(metrics: MetricInput): number {
+export function calculateEngagementScore(
+  metrics: MetricInput,
+  weights: EngagementWeights = DEFAULT_WEIGHTS,
+): number {
   const views = metrics.views ?? metrics.reach ?? metrics.post_media_view ?? 0;
   const likes = metrics.likes ?? 0;
   const saves = metrics.saved ?? metrics.saves ?? 0;
   const comments = metrics.comments ?? metrics.replies ?? 0;
   const shares = metrics.shares ?? metrics.reposts ?? metrics.quotes ?? 0;
-  return views + 3 * (likes + saves) + 5 * comments + 7 * shares;
+  return (
+    weights.views * views +
+    weights.likes * (likes + saves) +
+    weights.comments * comments +
+    weights.shares * shares
+  );
+}
+
+/**
+ * Lingkup 4 — self-tuning gate. Applies the candidate weights but never lets
+ * any single component move more than MAX_WEIGHT_SHIFT away from the current
+ * value. Two consecutive drawdown periods roll everything back to baseline —
+ * a mis-tuned weight set must not be able to quietly degrade ranking forever.
+ */
+export function tuneEngagementWeights(
+  current: EngagementWeights,
+  candidate: EngagementWeights,
+  ctx: { drawdownPeriods: number },
+): { weights: EngagementWeights; rollback: boolean; reason: string } {
+  if (ctx.drawdownPeriods >= ROLLBACK_DRAWDOWN_PERIODS) {
+    return { weights: { ...DEFAULT_WEIGHTS }, rollback: true, reason: `rollback: drawdown ${ctx.drawdownPeriods} periode berturut-turut — bobot direset ke default` };
+  }
+  const weights: EngagementWeights = {
+    views: clampShift(current.views, candidate.views, MAX_WEIGHT_SHIFT),
+    likes: clampShift(current.likes, candidate.likes, MAX_WEIGHT_SHIFT),
+    comments: clampShift(current.comments, candidate.comments, MAX_WEIGHT_SHIFT),
+    shares: clampShift(current.shares, candidate.shares, MAX_WEIGHT_SHIFT),
+  };
+  const moved = (Object.keys(weights) as (keyof EngagementWeights)[])
+    .filter((k) => Math.abs(weights[k] - current[k]) > 1e-9)
+    .map((k) => `${k} ${current[k]}->${weights[k].toFixed(2)}`);
+  return {
+    weights,
+    rollback: false,
+    reason: moved.length > 0 ? `tuned (maks ±${MAX_WEIGHT_SHIFT * 100}%): ${moved.join(", ")}` : "no change — candidate within tolerance",
+  };
 }
 
 /** Bucket ES per hook open-line. Malformed metrics rows are skipped. */

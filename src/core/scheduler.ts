@@ -28,11 +28,11 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { listLinks, getLink, addContent, listContent, setContentStatus, syncLinkMarkers } from "./store.ts";
+import { listLinks, getLink, addContent, listContent, setContentStatus, syncLinkMarkers, metricsWithPostTime } from "./store.ts";
 import { buildIdentity, detectType } from "./product-identity.ts";
 import { imagePromptFor, setHookPerf } from "./product-hook.ts";
 import { aggregatePerf, HOOK_PERF_KEY } from "./hook-perf.ts";
-import { getTopHooksForPrompt, chooseFewShotHooks, type RankedHook } from "./engagement-engine.ts";
+import { getTopHooksForPrompt, chooseFewShotHooks, type RankedHook, DEFAULT_WEIGHTS, tuneEngagementWeights, calculateEngagementScore, type EngagementWeights } from "./engagement-engine.ts";
 import { buildMysteryCaption, MYSTERY_PLATFORMS, topicFor } from "./mystery-caption.ts";
 import { fetchTopTrends, cachedTrends } from "./trends.ts";
 import { smartCaption, composeSmartBody } from "./smart-caption.ts";
@@ -1122,6 +1122,58 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
       if (generated > 0) logActivity({ level: "info", source: "system", event: "hooklab.week", message: `${generated} evolved hooks generated this week` });
     }
   } catch { /* advisory — hook lab failure never blocks posting */ }
+
+  // Lingkup 4 — score self-tuning (14-day cycle, ±20% per iteration, auto
+  // rollback on 2 consecutive drawdown periods). Evaluates total engagement
+  // of the last 14d vs the 14d before, derives candidate weights from the
+  // observed action mix, and persists to scheduler_meta['engagement_weights'].
+  try {
+    const lastTune = metaGet("engagement_tune_last") ?? "";
+    const daysSince = lastTune ? Math.floor((now.getTime() - new Date(lastTune).getTime()) / 86_400_000) : 999;
+    if (daysSince >= 14) {
+      const rows = metricsWithPostTime(42).map((r) => ({ created_at: r.created_at, metrics: JSON.parse(r.metrics) as Record<string, number> }));
+      const mid = 14;
+      const recent = rows.filter((r) => r.created_at >= new Date(now.getTime() - 28 * 86_400_000).toISOString());
+      const prior = rows.filter((r) => r.created_at < new Date(now.getTime() - 28 * 86_400_000).toISOString());
+      const totals = (rs: typeof rows) => rs.reduce((a, r) => {
+        a.views += r.metrics.views ?? 0; a.likes += (r.metrics.likes ?? 0) + (r.metrics.saves ?? 0);
+        a.comments += r.metrics.comments ?? 0; a.shares += r.metrics.shares ?? 0;
+        return a;
+      }, { views: 0, likes: 0, comments: 0, shares: 0 });
+      const cur = totals(recent), prv = totals(prior);
+      let weights: EngagementWeights;
+      try { weights = { ...DEFAULT_WEIGHTS, ...(JSON.parse(metaGet("engagement_weights") ?? "{}") as Partial<EngagementWeights>) }; }
+      catch { weights = { ...DEFAULT_WEIGHTS }; }
+      // Drawdown = last 14d engagement score below the previous 14d's.
+      const curScore = calculateEngagementScore(cur, weights);
+      const prvScore = calculateEngagementScore(prv, weights);
+      const isDrawdown = curScore < prvScore;
+      let drawdownPeriods = Number(metaGet("engagement_drawdown") ?? 0);
+      drawdownPeriods = isDrawdown ? drawdownPeriods + 1 : 0;
+      // Candidate: bias toward the action mix that actually moved engagement.
+      const curPosts = Math.max(1, recent.length);
+      const cand: EngagementWeights = {
+        views: weights.views,
+        likes: cur.likes / curPosts,
+        comments: cur.comments / curPosts,
+        shares: cur.shares / curPosts,
+      };
+      const scale = DEFAULT_WEIGHTS.shares / Math.max(0.001, cand.shares);
+      const normalized: EngagementWeights = {
+        views: cand.views, likes: cand.likes * scale, comments: cand.comments * scale, shares: cand.shares * scale,
+      };
+      const tuned = tuneEngagementWeights(weights, normalized, { drawdownPeriods });
+      metaSet("engagement_weights", JSON.stringify(tuned.weights));
+      metaSet("engagement_drawdown", String(drawdownPeriods));
+      metaSet("engagement_tune_last", now.toISOString());
+      logActivity({
+        level: tuned.rollback ? "warn" : "info",
+        source: "system", event: "engagement.tune",
+        message: `skor ${curScore.toFixed(0)} vs ${prvScore.toFixed(0)} (${isDrawdown ? "drawdown" : "naik"}) — ${tuned.reason}`,
+        meta: { weights: tuned.weights, rollback: tuned.rollback, drawdown: drawdownPeriods },
+      });
+    }
+  } catch { /* advisory — ranking continues with current weights */ }
 
   // Link health: daily sweep (meta-gated, cheap probe per link ~1s). A dead
   // affiliate link = zero commission; never post one. First pass runs at boot.
