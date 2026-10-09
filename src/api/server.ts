@@ -36,6 +36,7 @@ import {
   startScheduler,
   poolStatus,
   engagementInsights,
+  getSelfAuditMeta,
 } from "../core/scheduler.ts";
 import {
   listActivity, listActivitySince,
@@ -420,6 +421,10 @@ const server = createServer(async (req, res) => {
      */
     if (req.method === "GET" && url.pathname === "/api/engagement/insights") {
       return json(res, 200, engagementInsights());
+    }
+    // Lingkup 1 — self-audit snapshot (AI text + deterministic numbers).
+    if (req.method === "GET" && url.pathname === "/api/self-analyst") {
+      return json(res, 200, getSelfAuditMeta());
     }
 
     /** Live scheduler health — consumed by the Jadwal route's status dot. */

@@ -205,6 +205,13 @@ export function engagementTopHooks(): { hook: string; score: number; posts: numb
 }
 
 /** Snapshot for the API/UI: last refresh stamp + current top-hook ranking. */
+export function getSelfAuditMeta(): { updated_at: string | null; summary: unknown } {
+  const raw = metaGet("self_audit_latest");
+  if (!raw) return { updated_at: null, summary: null };
+  try { return { updated_at: metaGet("self_audit_last"), summary: JSON.parse(raw) as unknown }; }
+  catch { return { updated_at: null, summary: null }; }
+}
+
 export function engagementInsights(): {
   updated_at: string | null;
   top_hooks: { hook: string; score: number; posts: number }[];
@@ -1056,6 +1063,16 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
   try {
     refreshEngagementPerf(now);
   } catch { /* advisory — AI captions continue without few-shot signal */ }
+  // Lingkup 1 — daily self-audit (deterministic numbers + optional AI text).
+  try {
+    const last = metaGet("self_audit_last") ?? "";
+    if (last.slice(0, 10) !== dayKey(now)) {
+      const { runSelfAudit } = await import("./self-analyst.ts");
+      const s = await runSelfAudit({ get: metaGet, set: metaSet }, "24h");
+      metaSet("self_audit_last", now.toISOString());
+      logActivity({ level: "info", source: "system", event: "self.audit.done", message: `${s.publishing.publishes} publish / ${s.validator.rejects} reject / ${s.recommendations.length} rekomendasi (${s.source})` });
+    }
+  } catch { /* advisory — audit failure never blocks posting */ }
 
   // Link health: daily sweep (meta-gated, cheap probe per link ~1s). A dead
   // affiliate link = zero commission; never post one. First pass runs at boot.
