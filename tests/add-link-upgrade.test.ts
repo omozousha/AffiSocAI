@@ -7,6 +7,9 @@ test("resolveShopeeUrl returns canonical product URL and item id", async () => {
   const res = await resolveShopeeUrl("https://s.shopee.co.id/5fp1UF7Q7o");
   assert.ok(res.ok, `resolve failed: ${res.reason}`);
   assert.ok(res.resolved_url?.startsWith("https://shopee.co.id/"), `unexpected target: ${res.resolved_url}`);
+  // Canonical compact form — no affiliate/voucher query params (they expire).
+  assert.equal(res.resolved_url, "https://shopee.co.id/product/1337935037/28620395139", "not canonical form");
+  assert.ok(!res.resolved_url!.includes("?"), "canonical url must carry no query params");
   assert.equal(res.shopee_item_id, "28620395139", "item id mismatch");
   assert.equal(res.shopee_shop_id, "1337935037", "shop id mismatch");
 });
