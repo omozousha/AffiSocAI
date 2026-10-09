@@ -1074,6 +1074,55 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
     }
   } catch { /* advisory — audit failure never blocks posting */ }
 
+  // Lingkup 2 — AI Hook Lab.
+  // Daily: natural-selection sweep (retire evolved hooks below baseline).
+  // Weekly: generate new variants from proven winners (meta-gated by ISO week).
+  try {
+    const { initHookLabTable, listEvolvedHooks, evaluateEvolvedHookSurvival, generateEvolvedHook } =
+      await import("./hook-lab.ts");
+    initHookLabTable(db);
+    // retire sweep — daily
+    const active = listEvolvedHooks(db, undefined, "active");
+    if (active.length > 0) {
+      const baseline = Number(metaGet("engagement_baseline_mean") ?? 0.35);
+      for (const h of active) {
+        try { evaluateEvolvedHookSurvival(db, h.id, { impressions: h.impressions, score: h.score, baseline_mean: baseline }); }
+        catch { /* single hook failure never blocks the rest */ }
+      }
+    }
+    // generation — weekly (ISO week key gate)
+    const weekKey = `${now.getUTCFullYear()}-W${Math.ceil(((now.getTime() - Date.UTC(now.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7)}`;
+    if ((metaGet("hooklab_gen_week") ?? "") !== weekKey) {
+      const types = ["helm", "gadget", "rumah", "fashion", "tas", "sepatu", "skincare", "outdoor", "mainan", "olahraga", "lain"];
+      const key = process.env.AFFILIATE_ROUTER_KEY;
+      let generated = 0;
+      if (key && process.env.AFFILIATE_HOOK_LAB_AI !== "0") {
+        const complete = async (prompt: string): Promise<string | null> => {
+          const r = await fetch(`${process.env.AFFILIATE_ROUTER_BASE_URL || "https://router2nd.realpaytrans.my.id/v1"}/chat/completions`, {
+            method: "POST",
+            signal: AbortSignal.timeout(30_000),
+            headers: { authorization: `Bearer ${process.env.AFFILIATE_ROUTER_KEY ?? ""}`, "content-type": "application/json" },
+            body: JSON.stringify({ model: process.env.AFFILIATE_HOOK_LAB_MODEL || "ag/gemini-3.8-flash", messages: [{ role: "user", content: prompt }], temperature: 0.9, max_tokens: 300, stream: false }),
+          });
+          if (!r.ok) return null;
+          const txt = await r.text();
+          try { return (JSON.parse(txt) as { choices?: { message?: { content?: string } }[] }).choices?.[0]?.message?.content ?? null; }
+          catch { return null; }
+        };
+        for (const t of types) {
+          const top = (engagementTopHooks() ?? []).slice(0, 3).map((h: { hook: string }) => h.hook);
+          if (top.length === 0) break; // no proven winners yet — don't guess
+          const row = await generateEvolvedHook(db, t, top, complete);
+          if (row) generated++;
+          if (generated >= 3) break; // 3 new hooks per week, hard cap
+        }
+      }
+      metaSet("hooklab_gen_week", weekKey);
+      metaSet("hooklab_gen_last", now.toISOString());
+      if (generated > 0) logActivity({ level: "info", source: "system", event: "hooklab.week", message: `${generated} evolved hooks generated this week` });
+    }
+  } catch { /* advisory — hook lab failure never blocks posting */ }
+
   // Link health: daily sweep (meta-gated, cheap probe per link ~1s). A dead
   // affiliate link = zero commission; never post one. First pass runs at boot.
   try {
