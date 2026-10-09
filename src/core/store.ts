@@ -277,6 +277,16 @@ export function addLink(input: {
   if (input.sheet_id == null) {
     const existing = getLinkByUrl(input.short_url);
     if (existing) return existing;
+    // A different short_url that resolves to the same Shopee item is the SAME
+    // product (Shopee mints a new short code per affiliate link). Without this
+    // check the bio sheet gets a duplicate row for a product already stored.
+    if (input.resolved_url) {
+      const ids = parseShopee(input.resolved_url);
+      if (ids.itemId) {
+        const byItem = getLinkByItemId(ids.itemId);
+        if (byItem) return byItem;
+      }
+    }
   }
   // Guard the conflict path first. `ON CONFLICT(sheet_id) DO UPDATE` would
   // happily rewrite a row that already owns that sheet_id, i.e. overwrite a
@@ -321,6 +331,12 @@ export function addLink(input: {
 
 export function getLinkByUrl(shortUrl: string): LinkRow | undefined {
   return db.prepare(`SELECT * FROM links WHERE short_url = ?`).get(shortUrl) as LinkRow | undefined;
+}
+
+/** Look up a link by its Shopee item id — the canonical product identifier. */
+export function getLinkByItemId(itemId: string): LinkRow | undefined {
+  if (!itemId) return undefined;
+  return db.prepare(`SELECT * FROM links WHERE shopee_item_id = ? LIMIT 1`).get(itemId) as LinkRow | undefined;
 }
 
 /** Look up a link by its sheet row id — the natural key for sheet-backed rows. */
@@ -519,15 +535,36 @@ export function setContentStatus(
 /** Store the scraped og:title/og:image/og:description + category for a link. Keeps whatever was already there on null. */
 export function enrichLink(
   id: number,
-  patch: { product?: string | null; image_url?: string | null; deskripsi?: string | null; kategori?: string | null },
+  patch: {
+    product?: string | null;
+    image_url?: string | null;
+    deskripsi?: string | null;
+    kategori?: string | null;
+    resolved_url?: string | null;
+    shopee_shop_id?: string | null;
+    shopee_item_id?: string | null;
+  },
 ): void {
   const current = getLink(id) as (LinkRow & { deskripsi?: string | null }) | undefined;
   if (!current) return;
-  db.prepare(`UPDATE links SET product = ?, image_url = ?, deskripsi = ?, kategori = ? WHERE id = ?`).run(
+  db.prepare(
+    `UPDATE links SET
+       product = ?,
+       image_url = ?,
+       deskripsi = ?,
+       kategori = ?,
+       resolved_url = COALESCE(?, resolved_url),
+       shopee_shop_id = COALESCE(?, shopee_shop_id),
+       shopee_item_id = COALESCE(?, shopee_item_id)
+     WHERE id = ?`,
+  ).run(
     patch.product ?? current.product ?? null,
     patch.image_url ?? current.image_url ?? null,
     patch.deskripsi ?? current.deskripsi ?? null,
     patch.kategori ?? current.kategori ?? null,
+    patch.resolved_url ?? null,
+    patch.shopee_shop_id ?? null,
+    patch.shopee_item_id ?? null,
     id,
   );
 }

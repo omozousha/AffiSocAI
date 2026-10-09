@@ -21,8 +21,8 @@
  * the only correct order.
  */
 
-import { addLink, enrichLink, getLinkByUrl, attachSheetId, sealOriginalImage } from "./store.ts";
-import { fetchOg, checkImageUrl } from "./shopee.ts";
+import { addLink, enrichLink, getLinkByUrl, getLinkByItemId, attachSheetId, sealOriginalImage } from "./store.ts";
+import { fetchOg, checkImageUrl, resolveShopeeUrl } from "./shopee.ts";
 import { classifyCategory } from "./category.ts";
 import { productName } from "./templates.ts";
 import { fetchBioItems, isShopeeShortLink, publishToBio } from "./biolink.ts";
@@ -40,7 +40,7 @@ export type AddLinkInput = {
 
 export type AddLinkResult = {
   short_url: string;
-  status: "added" | "updated" | "rejected";
+  status: "added" | "updated" | "duplicate" | "rejected";
   reason?: string;
   link_id?: number;
   product?: string | null;
@@ -52,12 +52,17 @@ export type AddLinkResult = {
   kategori_source?: "operator" | "auto" | "stored" | null;
   sheet?: "written" | "already" | "skipped";
   sheet_id?: number;
+  /** Final URL after the Shopee 301 — carries the real product identity. */
+  resolved_url?: string | null;
+  shopee_item_id?: string | null;
+  shopee_shop_id?: string | null;
 };
 
 export type BulkAddResult = {
   total: number;
   added: number;
   updated: number;
+  duplicate: number;
   rejected: number;
   results: AddLinkResult[];
 };
@@ -108,6 +113,48 @@ export async function addLinkPipeline(
   const existing = getLinkByUrl(norm.url);
   const toSheet = input.toSheet !== false;
 
+  // --- resolve first: the 301 target carries the product's identity ---
+  // Proven: 40 of 42 stored rows had null resolved_url/shopee_item_id because
+  // the old pipeline never followed the redirect. The item id is the natural
+  // key — the same product shared under a different affiliate tag or short
+  // code resolves to the same `i.<shop>.<item>` target.
+  let resolvedUrl: string | null = existing?.resolved_url ?? null;
+  let shopId: string | null = existing?.shopee_shop_id ?? null;
+  let itemId: string | null = existing?.shopee_item_id ?? null;
+  if (!itemId) {
+    const res = await resolveShopeeUrl(norm.url);
+    if (res.ok && res.shopee_item_id) {
+      resolvedUrl = res.resolved_url;
+      shopId = res.shopee_shop_id;
+      itemId = res.shopee_item_id;
+    }
+  }
+  // Duplicate guard: a different short_url for an item already stored is the
+  // same product. Re-storing it would put a second row on the bio page.
+  if (itemId && !existing) {
+    const byItem = getLinkByItemId(itemId);
+    if (byItem) {
+      return {
+        ...base,
+        status: "duplicate",
+        link_id: byItem.id,
+        product: byItem.product,
+        image_url: byItem.image_url,
+        deskripsi: (byItem as { deskripsi?: string | null }).deskripsi ?? null,
+        image_verified: !!byItem.image_url,
+        og_found: !!byItem.product,
+        kategori: byItem.kategori,
+        kategori_source: "stored",
+        sheet: byItem.sheet_id != null ? "already" : "skipped",
+        sheet_id: byItem.sheet_id ?? undefined,
+        resolved_url: resolvedUrl,
+        shopee_item_id: itemId,
+        shopee_shop_id: shopId,
+        reason: `same Shopee item already stored as link ${byItem.id}`,
+      };
+    }
+  }
+
   // --- auto data lookup ---
   let og: Awaited<ReturnType<typeof fetchOg>> | null = null;
   let imageVerified = false;
@@ -154,12 +201,16 @@ export async function addLinkPipeline(
       kategori,
       kategori_source,
       sheet: undefined,
+      resolved_url: resolvedUrl,
+      shopee_item_id: itemId,
+      shopee_shop_id: shopId,
     };
   }
 
   // --- store ---
   const inserted = addLink({
     short_url: norm.url,
+    resolved_url: resolvedUrl,
     product,
     image_url,
     deskripsi,
@@ -169,9 +220,26 @@ export async function addLinkPipeline(
   // so backfill columns the first save missed (deskripsi/kategori are new;
   // older rows predate them) before anything downstream reads the row.
   let row = inserted;
-  if (existing && (product || image_url || deskripsi || kategori)) {
-    enrichLink(inserted.id, { product, image_url, deskripsi, kategori: kategori || existing.kategori });
-    row = { ...inserted, product: product ?? inserted.product, image_url: image_url ?? inserted.image_url, deskripsi: deskripsi ?? inserted.deskripsi, kategori: kategori || inserted.kategori };
+  if (existing && (product || image_url || deskripsi || kategori || resolvedUrl)) {
+    enrichLink(inserted.id, {
+      product,
+      image_url,
+      deskripsi,
+      kategori: kategori || existing.kategori,
+      resolved_url: resolvedUrl,
+      shopee_shop_id: shopId,
+      shopee_item_id: itemId,
+    });
+    row = {
+      ...inserted,
+      product: product ?? inserted.product,
+      image_url: image_url ?? inserted.image_url,
+      deskripsi: deskripsi ?? inserted.deskripsi,
+      kategori: kategori || inserted.kategori,
+      resolved_url: resolvedUrl ?? inserted.resolved_url,
+      shopee_shop_id: shopId ?? inserted.shopee_shop_id,
+      shopee_item_id: itemId ?? inserted.shopee_item_id,
+    };
   }
   // Seal the untouched Shopee image: the first verified og:image becomes the
   // permanent img2img reference. Recreate output must never overwrite it.
@@ -276,6 +344,9 @@ export async function addLinkPipeline(
     kategori_source,
     sheet,
     sheet_id: sheetId,
+    resolved_url: resolvedUrl,
+    shopee_item_id: itemId,
+    shopee_shop_id: shopId,
   };
 }
 
@@ -292,6 +363,7 @@ export async function addLinksBulk(
     total: inputs.length,
     added: results.filter((r) => r.status === "added").length,
     updated: results.filter((r) => r.status === "updated").length,
+    duplicate: results.filter((r) => r.status === "duplicate").length,
     rejected: results.filter((r) => r.status === "rejected").length,
     results,
   };

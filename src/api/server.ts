@@ -18,9 +18,9 @@ import { fileURLToPath } from "node:url";
 import { getProvider, listProviders } from "../core/registry.ts";
 import { composio } from "../core/composio.ts";
 import { addLink, addContent, listContent, listLinks, getLink, getLinkBySheetId, enrichLink, deleteLink, setContentStatus, answeredCommentIds, recordReply, listReplies, markLinkPublished } from "../core/store.ts";
+import { fetchOg, checkImageUrl, resolveShopeeUrl } from "../core/shopee.ts";
 import { buildTemplates, productName } from "../core/templates.ts";
 import { buildMysteryCaption, mysteryKind, MYSTERY_PLATFORMS, type MysteryDraft } from "../core/mystery-caption.ts";
-import { fetchOg, checkImageUrl } from "../core/shopee.ts";
 import { fetchBioItems, nextIds, importableItems, publishToBio } from "../core/biolink.ts";
 import { addLinksBulk, parseLinkBlob, normaliseLink } from "../core/add-link.ts";
 import {
@@ -553,6 +553,10 @@ const server = createServer(async (req, res) => {
       const id = Number(url.pathname.split("/")[3]);
       const link = getLink(id);
       if (!link) return json(res, 404, { error: `no link with id ${id}` });
+      // Identity first: the 301 target carries resolved_url + shop/item ids.
+      // These columns were never written by the og path, so a re-enrich is the
+      // only place an old row gets them.
+      const resolved = link.shopee_item_id ? null : await resolveShopeeUrl(link.short_url);
       const og = await fetchOg(link.short_url);
       if (!og.title && !og.image) {
         return json(res, 502, { error: "could not read og tags from the link" });
@@ -565,13 +569,67 @@ const server = createServer(async (req, res) => {
           return json(res, 502, { error: `og:image not usable: ${probe.reason}` });
         }
       }
-      enrichLink(id, { product: productName(og.title), image_url: og.image });
+      enrichLink(id, {
+        product: productName(og.title),
+        image_url: og.image,
+        resolved_url: resolved?.resolved_url ?? null,
+        shopee_shop_id: resolved?.shopee_shop_id ?? null,
+        shopee_item_id: resolved?.shopee_item_id ?? null,
+      });
       const updated = getLink(id)!;
       return json(res, 200, {
         link: updated,
         product: updated.product,
         image_url: updated.image_url,
         imageVerifiedFetchable: imageOk,
+        resolved_url: updated.resolved_url,
+        shopee_item_id: updated.shopee_item_id,
+      });
+    }
+
+    /**
+     * Backfill the identity columns for every link that is missing them.
+     *
+     * POST /api/links/re-enrich            → every row needing it
+     * POST /api/links/re-enrich { "limit": 10, "ids": [3,15] }
+     *
+     * This is the one-shot fix for the 40 rows stored before the resolver
+     * existed. Sequential on purpose — a burst of Shopee 301 lookups from one
+     * host gets rate-limited, and the identity write is idempotent so a
+     * partial run is safe to repeat.
+     */
+    if (req.method === "POST" && url.pathname === "/api/links/re-enrich") {
+      const body = (await readBody(req)) as unknown as { ids?: number[]; limit?: number };
+      const all = listLinks();
+      const ids: number[] | null = Array.isArray(body?.ids) ? body.ids.map(Number).filter(Number.isFinite) : null;
+      const limit = Number(body?.limit) > 0 ? Number(body.limit) : 50;
+      const needs = (ids ?? all.map((l) => l.id))
+        .filter((id) => {
+          const l = getLink(id);
+          return !!l && !l.shopee_item_id;
+        })
+        .slice(0, limit);
+      const done: { id: number; item_id: string | null; resolved_url: string | null; ok: boolean; reason?: string }[] = [];
+      for (const id of needs) {
+        const l = getLink(id);
+        if (!l) continue;
+        const res = await resolveShopeeUrl(l.short_url);
+        if (res.ok && res.shopee_item_id) {
+          enrichLink(id, {
+            resolved_url: res.resolved_url,
+            shopee_shop_id: res.shopee_shop_id,
+            shopee_item_id: res.shopee_item_id,
+          });
+          done.push({ id, item_id: res.shopee_item_id, resolved_url: res.resolved_url, ok: true });
+        } else {
+          done.push({ id, item_id: null, resolved_url: null, ok: false, reason: res.reason ?? "unknown" });
+        }
+      }
+      return json(res, 200, {
+        scanned: needs.length,
+        backfilled: done.filter((d) => d.ok).length,
+        failed: done.filter((d) => !d.ok).length,
+        results: done,
       });
     }
 
