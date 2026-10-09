@@ -34,6 +34,7 @@ const SYSTEM = [
   "3) CTA komunitas — ajak tag teman / sharing kebiasaan di komentar.",
   "ATURAN KERAS:",
   "- JANGAN PERNAH menulis merk, brand, nama model, atau nama toko. Kata kategori umum (helm, pompa ban, earbuds) boleh.",
+  "- FOKUS pada FUNGSI UTAMA produk — masalah apa yang diselesaikan untuk penggunanya. Judul Shopee bisa memuat kata pelengkap: 'Shoes Dryer' adalah ALAT PENGERING, bukan sepatu; 'Rak Sepatu' adalah FURNITURE, bukan alas kaki. Edukasi mengikuti fungsi utama, bukan subjek pelengkap.",
   "- DILARANG mengklaim: harga, diskon, gratis ongkir, garansi, 'sudah dipakai', testimoni, angka penjualan.",
   "- Tanpa hashtag, tanpa link, tanpa emoji berlebihan (maks 1 emoji). Total MAKS 400 karakter.",
   "- Bahasa Indonesia santai. Balas HANYA 3 paragraf itu.",
@@ -67,13 +68,24 @@ const GENERIC = new Set([
   "full", "face", "anti", "portable", "electric", "wireless", "bluetooth", "premium",
   "universal", "travel", "casual", "outdoor", "indoor", "mini", "big", "new", "hot",
   "pompa", "sepatu", "sneakers", "earbuds", "headphone", "headset", "speaker", "kabel",
-  "tas", "dompet", "botol", "tumbler", "laptop", "mouse", "keyboard", "monitor", "ban",
   // common household/toy/gift nouns — Shopee titles capitalize them, but they
   // are description words, not brands; rejecting them caused silent fallbacks.
   "boneka", "lampu", "tidur", "kamar", "jam", "clock", "gift", "kado", "mainan",
   "capybara", "kapibara", "meja", "dinding", "anak", "lucu", "imut", "lembut",
   "game", "konsol", "stiker", "case", "kulkas", "kipas", "ac", "helm", "sepeda",
   "led", "oled", "ips", "usb", "hdmi", "lcd", "rgb", "api", "hd", "fhd", "aqi",
+  // ── LINGKUP 3 — FUNCTION/ADJECTIVE NOUNS — never brand spill ──────────
+  // These are functional or descriptive nouns/adjectives that legitimately
+  // appear in AI captions as the *product's job*, not as its brand. Keeping
+  // them out of brandTokens stops false validator rejects (proven 2026-10-09:
+  // "pengering"/"basah"/"angin"/"tahan"/"kamera"/"grinder" killed AI stories).
+  "pengering", "pengeringan", "dryer", "kering", "basah", "kipas", "angin",
+  "tahan", "lama", "kamera", "camera", "grinder", "gilingan", "coffee", "maker",
+  "digital", "elektrik", "listrik", "daya", "watt", "baterai", "battery", "charger",
+  "alat", "mesin", "pembersih", "penghisap", "vacuum", "proyektor", "projector",
+  "humidifier", "diffuser", "sterilizer", "blender", "mixer", "juicer", "teko",
+  "panci", "pemanas", "penghangat", "rak", "sofa", "duduk", "lipat", "camping",
+  "koper", "tas", "botol", "tumbler", "mainan", "boneka",
 ]);
 
 /**

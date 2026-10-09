@@ -56,6 +56,19 @@ export function detectType(id: ProductIdentity): ProductType {
   const k = (id.kategori || "").toUpperCase();
   const hay = n + " " + k;
 
+  // ── LINGKUP 3 — FUNCTION FIRST ────────────────────────────────────────
+  // The product's FUNCTION outranks the subject noun in its title. Shopee
+  // titles read "<subject> <function>": "Shoes Dryer" is a DRYER (not
+  // footwear), "Rak Sepatu" is a shelf (not footwear), "Kipas Angin" is a
+  // fan. Without this block the subject noun wins and the hook/validator
+  // end up educating about the wrong thing (proven live: content 191-193
+  // shipped "mix-match outfit" copy for a shoe dryer).
+  // ──────────────────────────────────────────────────────────────────────
+  if (/RAK\s*SEPATU|SHOE\s*RACK|BOX\s*SEPATU|KOTAK\s*SEPATU|RACK\s*BUKU|PENGHARUM\s*SEPATU/.test(hay)) return "rumah";
+  if (/PENGERING\s*(PAKAIAN|BAJU|SEPATU|RAMBUT|PIRING|GELAS|TANGAN|BOTOL)?\s*(PORTABLE|MINI|ELEKTRONIK|BAHAN)?|DRYER|DEHUMIDIFIER|HUMIDIFIER|DIFFUSER|STERILIZER|STEAMER|SETRIKA|\bIRON\b|VACUUM|PENGHISAP|AIR\s*FRYER|MESIN\s*CUCI|WASHER/.test(hay)) return "gadget";
+  if (/COFFEE\s*(MAKER|GRINDER|BREWER|MACHINE)|GRINDER|GILINGAN|BLENDER|MIXER|JUICER|OVEN|MICROWAVE|PANCI|TEKO|KETTLE|RICE\s*COOKER|KOMPOR\s*LISTRIK|DISPENSER|AIR\s*MINERAL|LAMPU\s*UV|PEMANAS\s*(AIR|MINUM)|WATER\s*HEATER|PENGHANGAT/.test(hay)) return "rumah";
+  if (/PROYEKTOR|PROJECTOR|SPEAKER|KIPAS|FAN|KAMERA|CAMERA|CCTV|PROYEK|MESIN\s*KASIR|BARCODE|SCANNER/.test(hay)) return "gadget";
+
   if (/HELM|KACAMATA|SUNGLASS|HEADGEAR/.test(hay)) return "helm";
   if (/SEPATU|SANDAL|SHOES|SNEAKERS|SLIPON/.test(hay)) return "sepatu";
   // ORDER MATTERS + WORD BOUNDARIES: "SERBAGUNA" contains "BAG", "KERTAS"
