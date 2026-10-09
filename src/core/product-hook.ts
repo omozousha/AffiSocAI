@@ -246,22 +246,79 @@ export function pickHook(id: ProductIdentity, publishIndex: number): HookVariant
   return filled[publishIndex % filled.length]!;
 }
 
-/** Prompt fragment for image regen — matches the product type. */
+/**
+ * Scene detector for img2img prompt building.
+ * Proven live failure: coffee maker classified as `rumah` was prompted in a
+ * "cozy modern bedroom" — vision review rejected it (link 44). Scene must
+ * match the actual product function (kitchen vs bedroom vs entryway vs food).
+ * Returns the scene AND the concrete product noun so the prompt never says a
+ * generic category list ("appliance (coffee maker/grinder/...)") — the image
+ * model picks one at random and the vision reviewer rejects the mismatch.
+ */
+const SCENE_RULES: Array<{ scene: string; terms: Array<[RegExp, string]> }> = [
+  // 1. Drinkware BEFORE food: kategori "Minuman" matches the food list too.
+  { scene: "drinkware", terms: [[/TUMBLER/, "insulated stainless steel tumbler"], [/BOTOL\s*MINUM|WATER\s*BOTTLE/, "water bottle"], [/TERMOS|THERMOS/, "vacuum flask"], [/MUG|CANGKIR/, "mug"]] },
+  { scene: "kitchen", terms: [[/COFFEE\s*GRINDER|GRINDER|GILINGAN/, "electric coffee grinder"], [/COFFEE\s*(MAKER|BREWER|MACHINE)/, "coffee maker"], [/BLENDER/, "blender"], [/MIXER/, "hand mixer"], [/JUICER/, "juicer"], [/AIR\s*FRYER/, "air fryer"], [/MICROWAVE/, "microwave oven"], [/OVEN/, "oven"], [/RICE\s*COOKER/, "rice cooker"], [/KETTLE|TEKO/, "electric kettle"], [/KOMPOR/, "portable stove"], [/PANCI/, "cooking pot"], [/KITCHEN\s*SINK|SINK\s*FILTER|PENYARING\s*AIR/, "kitchen sink water filter"]] },
+  { scene: "food", terms: [[/POPCORN/, "salted caramel popcorn snack"], [/DRY\s*RUB|MARINASI|BUMBU/, "BBQ dry rub seasoning"], [/COKLAT|CHOCOLATE/, "chocolate confectionery"], [/KUE|COOKIE/, "cookies"], [/KERIPIK|CHIPS/, "potato chips"], [/SAMBAL|SAUS/, "chili sauce"], [/SUSU/, "milk beverage"], [/MAKANAN|SNACK/, "packaged snack food"]] },
+  { scene: "entryway", terms: [[/RAK\s*SEPATU|SHOE\s*RACK/, "shoe rack"], [/BOX\s*SEPATU|KOTAK\s*SEPATU/, "shoe storage box"], [/RAK\s*BUKU/, "bookshelf"], [/GANTUNGAN/, "wall hanger"], [/ORGANIZER/, "storage organizer"], [/LEMARI/, "cabinet"]] },
+  { scene: "bedroom", terms: [[/BANTAL\s*GULING|GULING/, "bolster pillow"], [/BANTAL/, "bed pillow"], [/KASUR|MATRAS/, "mattress"], [/SPREI/, "bed sheet"], [/SELIMUT/, "blanket"]] },
+  { scene: "decor", terms: [[/PENGHARUM|AROMATERAPI|DIFFUSER/, "reed diffuser aroma"], [/HUMIDIFIER/, "humidifier"], [/LILIN|CANDLE/, "scented candle"], [/LAMPU\s*TIDUR/, "bedside lamp"], [/VASE|VAS\s*BUNGA/, "flower vase"]] },
+  { scene: "automotive", terms: [[/POMPA\s*BAN|TIRE\s*PUMP/, "electric tire pump"], [/DASHCAM/, "dashboard camera"], [/CAR\s*HOLDER/, "car phone holder"], [/\bMOBIL\b/, "car accessory"], [/\bMOTOR(?:\s|$)/, "motorcycle accessory"]] },
+  { scene: "gaming", terms: [[/HANDHELD|RETRO\s*GAME|R36S/, "retro handheld game console"], [/GAME\s*CONSOLE|KONSOL/, "game console"], [/GAMEPAD|STICK\s*GAME/, "game controller"], [/GAMING/, "gaming gear"]] },
+  { scene: "ergonomic", terms: [[/KURSI\s*RODA|WHEELCHAIR/, "wheelchair"], [/KURSI\s*PUTAR/, "360 rotating mini chair"], [/KURSI\s*KERJA|ERGONOMIC/, "ergonomic office chair"], [/TONGKAT/, "walking cane"]] },
+  { scene: "hardware", terms: [[/PENAHAN\s*PINTU|DOOR\s*STOPPER/, "door stopper"], [/GEMBOK|KUNCI/, "door lock"], [/COLOKAN|STOP\s*KONTAK/, "power socket adapter"]] },
+];
+
+function detectScene(id: ProductIdentity): { scene: string; noun: string } | null {
+  const hay = `${id.name || ""} ${id.kategori || ""}`.toUpperCase();
+  for (const rule of SCENE_RULES) {
+    for (const [re, noun] of rule.terms) {
+      if (re.test(hay)) return { scene: rule.scene, noun };
+    }
+  }
+  return null;
+}
+
+const FIDELITY_CLAUSE = "Keep the product exactly as in the reference — same design, colours, labels, proportions and features, no invented details.";
+
+/** Prompt fragment for image regen — matches the product type and scene. */
 export function imagePromptFor(id: ProductIdentity): string {
+  const hit = detectScene(id);
   const type = detectType(id);
   const productTypeLabel = typeLabel(type);
-  const prompts: Record<string, string> = {
-    helm: `Professional e-commerce product photograph of a full-face motorcycle helmet on a pure white seamless background, soft directional lighting, clean drop shadow, 45-degree three-quarter angle showing shell curvature and visor detail. Keep the product exactly as in the reference — same shell, same visor colour, no invented details.`,
-    tas: `Professional e-commerce product photograph of a bag/backpack on a light concrete studio surface with soft diffused shadow, slight overhead angle.`,
-    sepatu: `Professional e-commerce product photograph of footwear on a seamless stone-grey background, laces visible, soft directional light, clean drop shadow.`,
-    gadget: `Professional e-commerce product photograph of a small electronic gadget on a matte grey seamless surface with subtle flat-lay composition, precise edge lighting, clean shadow, catalogue quality.`,
-    rumah: `Warm lifestyle product photograph of a home item styled in a cozy modern bedroom, soft morning window light, lived-in but tidy bedding, shallow depth of field, catalogue quality.`,
-    fashion: `Fashion e-commerce product photograph of an outfit on a ghost mannequin against a light grey studio backdrop, soft diffused lighting, fabric texture crisp, catalogue quality.`,
-    skincare: `Clean beauty product photograph of a skincare product on a glossy white podium with soft water-splash bokeh background, fresh dewy lighting, premium skincare-ad quality.`,
-    outdoor: `Rugged outdoor product photograph of outdoor gear on dark volcanic rock with blurred pine-forest background, dramatic natural light, adventure-catalogue quality.`,
-    mainan: `Cheerful product photograph of a toy on a pastel-yellow seamless background with soft confetti bokeh, bright playful lighting, toy-catalogue quality.`,
-    olahraga: `Dynamic sports product photograph of sports gear on a dark charcoal gym backdrop with dramatic rim lighting, sense of motion, fitness-catalogue quality.`,
-    default: `Professional e-commerce product photograph of ${productTypeLabel} on a pure white seamless studio background, soft directional lighting and clean drop shadow. Keep the product exactly as in the reference — same design, colours and proportions.`,
+
+  // Scene-specific prompts take precedence over generic category prompts
+  // to avoid absurd placements like coffee makers in cozy bedrooms. The noun
+  // is interpolated so the image model never has to guess which product.
+  const sceneTemplates: Record<string, string> = {
+    kitchen: `Professional e-commerce product photograph of a {noun} on a clean marble kitchen countertop with soft morning natural light from a nearby window, pristine modern kitchen background with shallow depth of field.`,
+    food: `Appetizing commercial food photography of a {noun} package styled on a warm wooden dining tabletop, soft natural lighting, natural gourmet props softly blurred in background, high-end food magazine editorial quality.`,
+    drinkware: `Clean commercial product photograph of a {noun} standing upright on a minimalist stone coaster with subtle condensation droplets, soft studio lighting, fresh contemporary aesthetic.`,
+    entryway: `Modern interior lifestyle photograph of a {noun} styled in a tidy contemporary entryway foyer with clean wooden flooring and bright natural ambient light, architectural digest quality.`,
+    bedroom: `Warm lifestyle product photograph of premium {noun} neatly arranged on a modern luxury bed, soft morning window light, serene and cozy atmosphere, catalogue quality.`,
+    decor: `Aesthetic interior lifestyle product photograph of a {noun} on a minimalist wooden side table with gentle ambient glow and soft morning bokeh, calm modern zen vibe.`,
+    automotive: `Professional e-commerce product photograph of a {noun} on a clean textured charcoal surface, precise technical rim lighting, sleek modern tool aesthetic.`,
+    gaming: `Sleek product photograph of a {noun} on a matte dark desk with subtle warm-amber and cyan rim lighting, crisp button details, tech-review quality.`,
+    ergonomic: `Professional lifestyle product photograph of a {noun} on a clean light-grey seamless studio floor, soft even lighting, clear functional details visible.`,
+    hardware: `Clean catalogue product photograph of a {noun} installed neatly against a modern door and wooden floor, natural lighting, clear functional view.`,
   };
-  return prompts[type] || prompts.default!;
+
+  if (hit && sceneTemplates[hit.scene]) {
+    return `${sceneTemplates[hit.scene]!.replace("{noun}", hit.noun)} ${FIDELITY_CLAUSE}`;
+  }
+
+  const categoryPrompts: Record<string, string> = {
+    helm: `Professional e-commerce product photograph of a full-face motorcycle helmet on a pure white seamless background, soft directional lighting, clean drop shadow, 45-degree three-quarter angle showing shell curvature and visor detail. ${FIDELITY_CLAUSE}`,
+    tas: `Professional e-commerce product photograph of a bag/backpack on a light concrete studio surface with soft diffused shadow, slight overhead angle. ${FIDELITY_CLAUSE}`,
+    sepatu: `Professional e-commerce product photograph of footwear on a seamless stone-grey background, laces visible, soft directional light, clean drop shadow. ${FIDELITY_CLAUSE}`,
+    gadget: `Professional e-commerce product photograph of a small electronic gadget on a matte grey seamless surface with subtle flat-lay composition, precise edge lighting, clean shadow, catalogue quality. ${FIDELITY_CLAUSE}`,
+    rumah: `Warm lifestyle product photograph of a home item styled in a cozy modern living room, soft daylight, tidy modern decor, shallow depth of field, catalogue quality. ${FIDELITY_CLAUSE}`,
+    fashion: `Fashion e-commerce product photograph of an outfit on a ghost mannequin against a light grey studio backdrop, soft diffused lighting, fabric texture crisp, catalogue quality. ${FIDELITY_CLAUSE}`,
+    skincare: `Clean beauty product photograph of a skincare product on a glossy white podium with soft water-splash bokeh background, fresh dewy lighting, premium skincare-ad quality. ${FIDELITY_CLAUSE}`,
+    outdoor: `Rugged outdoor product photograph of outdoor gear on dark volcanic rock with blurred pine-forest background, dramatic natural light, adventure-catalogue quality. ${FIDELITY_CLAUSE}`,
+    mainan: `Cheerful product photograph of a toy on a pastel-yellow seamless background with soft confetti bokeh, bright playful lighting, toy-catalogue quality. ${FIDELITY_CLAUSE}`,
+    olahraga: `Dynamic sports product photograph of sports gear on a dark charcoal gym backdrop with dramatic rim lighting, sense of motion, fitness-catalogue quality. ${FIDELITY_CLAUSE}`,
+    default: `Professional e-commerce product photograph of ${productTypeLabel} on a pure white seamless studio background, soft directional lighting and clean drop shadow. ${FIDELITY_CLAUSE}`,
+  };
+  return categoryPrompts[type] || categoryPrompts.default!;
 }
