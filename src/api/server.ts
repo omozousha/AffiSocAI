@@ -22,7 +22,7 @@ import { fetchOg, checkImageUrl, resolveShopeeUrl } from "../core/shopee.ts";
 import { buildTemplates, productName } from "../core/templates.ts";
 import { buildMysteryCaption, mysteryKind, MYSTERY_PLATFORMS, type MysteryDraft } from "../core/mystery-caption.ts";
 import { fetchBioItems, nextIds, importableItems, publishToBio } from "../core/biolink.ts";
-import { addLinksBulk, parseLinkBlob, normaliseLink } from "../core/add-link.ts";
+import { addLinksBulk, parseLinkBlob, normaliseLink, type AddLinkInput } from "../core/add-link.ts";
 import {
   listSlots,
   getSlotById,
@@ -505,10 +505,36 @@ const server = createServer(async (req, res) => {
     }
 
     /**
+     * SSE add-link: the UI gets a live percent + the step currently running
+     * instead of a spinner that says nothing for 10-30s per link.
+     *
+     * Events: start {total} → step {stage,label}* → progress {index,total,percent,label}
+     *         → done {added,updated,duplicate,rejected,results}
+     */
+    async function streamAddLinks(res: import("node:http").ServerResponse, inputs: AddLinkInput[]) {
+      const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      if (!inputs.length) {
+        res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive", "x-accel-buffering": "no" });
+        send("error", { error: "short_url or links is required" });
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", connection: "keep-alive", "x-accel-buffering": "no" });
+      send("start", { total: inputs.length });
+      const result = await addLinksBulk(inputs, {
+        onStep: (s) => send("step", s),
+        onProgress: (p) => send("progress", { ...p, percent: Math.round((p.index / p.total) * 100) }),
+      });
+      send("done", { ...result, ok: result.rejected !== result.total });
+      res.end();
+    }
+
+    /**
      * Add link(s) — the primary input path.
      *   single:  { "short_url": "https://s.shopee.co.id/xxx" }
      *   bulk:    { "links": "https://...\nhttps://..." }  or  { "links": ["https://...", "https://..."] }
      *   dry-run: { "dryRun": true }  → og + image probe, nothing stored, nothing appended
+     *   stream:  { "stream": true } → SSE progress events (or use POST /api/links/stream)
      * Auto-fetches og:title / og:image, verifies the image is fetchable, stores
      * the row and appends it to the bio Google Sheet (sequentially).
      */
@@ -518,6 +544,8 @@ const server = createServer(async (req, res) => {
         links?: string | string[];
         dryRun?: boolean;
         kategori?: string;
+        /** Set true (or hit /api/links/stream) for SSE progress events. */
+        stream?: boolean;
       };
       const blob = typeof body.links === "string" ? body.links : Array.isArray(body.links) ? body.links.join("\n") : "";
       const blobInputs = blob ? parseLinkBlob(blob) : [];
@@ -535,8 +563,28 @@ const server = createServer(async (req, res) => {
         const dry = await addLinksBulk(inputs, { dryRun: true });
         return json(res, 200, { dryRun: true, ...dry });
       }
-      const result = await addLinksBulk(inputs);
-      return json(res, result.rejected === result.total ? 422 : 201, result);
+      const stream = body.stream === true;
+      if (!stream) {
+        const result = await addLinksBulk(inputs);
+        return json(res, result.rejected === result.total ? 422 : 201, result);
+      }
+      await streamAddLinks(res, inputs);
+      return;
+    }
+
+    /** Same as POST /api/links but always streams progress over SSE. */
+    if (req.method === "POST" && url.pathname === "/api/links/stream") {
+      const body = (await readBody(req)) as { short_url?: string; links?: string | string[]; kategori?: string };
+      const blob = typeof body.links === "string" ? body.links : Array.isArray(body.links) ? body.links.join("\n") : "";
+      const blobInputs = blob ? parseLinkBlob(blob) : [];
+      const inputs = blobInputs.length
+        ? blobInputs
+        : body.short_url
+          ? [{ short_url: body.short_url }]
+          : [];
+      if (body.kategori) for (const i of inputs) i.kategori = body.kategori;
+      await streamAddLinks(res, inputs);
+      return;
     }
 
     /** Delete a stored link + its content rows. Slot history keeps link_id as a tombstone. */

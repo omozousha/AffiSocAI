@@ -1,89 +1,97 @@
 import { useState } from "react";
-import { Link2, ArrowRight, Loader2 } from "lucide-react";
+import { Link2 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
+import { ProgressBar } from "../../components/ui/progress-bar";
 import { api } from "../../lib/utils";
+import { postSSE } from "../../lib/sse";
 
 export interface StepLinkProps {
   onSuccess: (data: { linkId: number; product: string; imageUrl: string; shortUrl: string }) => void;
   onError: (err: string) => void;
 }
 
+type ResultItem = {
+  link_id?: number;
+  product?: string | null;
+  image_url?: string | null;
+  status?: string;
+  reason?: string;
+};
+
+/** Langkah 1 wizard: simpan link + progress bar live (SSE). */
 export function StepLink({ onSuccess, onError }: StepLinkProps) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [kategori, setKategori] = useState("");
+  const [prog, setProg] = useState<{ percent: number; label: string } | null>(null);
+
+  const finish = async (item: ResultItem | undefined, cleanUrl: string) => {
+    if (!item) {
+      // fallback: link mungkin sudah tersimpan (duplicate) — cari by short_url
+      const listRes = await api<{ links: Array<{ id: number; product?: string; image_url?: string; short_url?: string }> }>("/api/links");
+      const match = listRes.body.links?.find((l) => l.short_url === cleanUrl) || listRes.body.links?.[0];
+      if (!match) {
+        onError("Link tersimpan tapi ID tidak ditemukan");
+        return;
+      }
+      onSuccess({ linkId: match.id, product: match.product || "Produk Shopee", imageUrl: match.image_url || "", shortUrl: cleanUrl });
+      return;
+    }
+    if (item.status === "rejected") {
+      onError(item.reason || "Link ditolak");
+      return;
+    }
+    let linkId = item.link_id as number;
+    let product = item.product || "Produk Shopee";
+    let imageUrl = item.image_url || "";
+
+    if (!imageUrl) {
+      const enrichRes = await api<{ error?: string; product?: string; image_url?: string }>(`/api/links/${linkId}/enrich`, {
+        method: "POST",
+      });
+      if (enrichRes.status === 200) {
+        product = enrichRes.body.product || product;
+        imageUrl = enrichRes.body.image_url || imageUrl;
+      }
+    }
+    onSuccess({ linkId, product, imageUrl, shortUrl: cleanUrl });
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanUrl = url.trim();
     if (!cleanUrl) return;
     setLoading(true);
+    setProg({ percent: 0, label: "Menyiapkan…" });
+    let done: ResultItem | undefined;
     try {
-      // 1. Simpan link Shopee
-      const addRes = await api<{
-        total?: number;
-        added?: number;
-        rejected?: number;
-        error?: string;
-        results?: Array<{
-          link_id?: number;
-          product?: string | null;
-          image_url?: string | null;
-          status?: string;
-          reason?: string;
-        }>;
-      }>("/api/links", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ short_url: cleanUrl, kategori: kategori.trim() || undefined }),
-      });
-
-      if (addRes.status !== 200 && addRes.status !== 201) {
-        throw new Error(addRes.body.error || `Gagal menyimpan link (HTTP ${addRes.status})`);
-      }
-
-      const resItem = addRes.body.results?.[0];
-      const linkId = resItem?.link_id;
-      if (!linkId) {
-        // Fallback: ambil link terbaru jika list returned tanpa item atau format non-standar
-        const listRes = await api<{ links: Array<{ id: number; product?: string; image_url?: string; short_url?: string }> }>("/api/links");
-        const match = listRes.body.links?.find((l) => l.short_url === cleanUrl) || listRes.body.links?.[0];
-        if (!match) throw new Error("Link tersimpan tapi ID tidak ditemukan");
-        
-        let prod = match.product || "Produk Shopee";
-        let img = match.image_url || "";
-        if (!img) {
-          const enrichRes = await api<{ error?: string; product?: string; image_url?: string }>(`/api/links/${match.id}/enrich`, {
-            method: "POST",
-          });
-          if (enrichRes.status === 200 && enrichRes.body.image_url) {
-            prod = enrichRes.body.product || prod;
-            img = enrichRes.body.image_url;
-          }
-        }
-        onSuccess({ linkId: match.id, product: prod, imageUrl: img, shortUrl: cleanUrl });
-        return;
-      }
-
-      let product = resItem.product || "Produk Shopee";
-      let imageUrl = resItem.image_url || "";
-
-      if (!imageUrl) {
-        const enrichRes = await api<{ error?: string; product?: string; image_url?: string }>(`/api/links/${linkId}/enrich`, {
-          method: "POST",
-        });
-        if (enrichRes.status === 200) {
-          product = enrichRes.body.product || product;
-          imageUrl = enrichRes.body.image_url || imageUrl;
-        }
-      }
-
-      onSuccess({ linkId, product, imageUrl, shortUrl: cleanUrl });
+      await postSSE(
+        "/api/links/stream",
+        { short_url: cleanUrl, ...(kategori.trim() ? { kategori: kategori.trim() } : {}) },
+        (ev) => {
+          if (ev.event === "step") setProg((p) => ({ percent: p?.percent ?? 0, label: ev.data.label }));
+          else if (ev.event === "progress") setProg({ percent: ev.data.percent, label: ev.data.label || "Tersimpan…" });
+          else if (ev.event === "done") {
+            done = (ev.data.results as ResultItem[])?.[0];
+            if (done?.status === "duplicate") {
+              // link sudah ada — lanjut dengan data existing
+              onSuccess({
+                linkId: done.link_id!,
+                product: done.product || "Produk Shopee",
+                imageUrl: done.image_url || "",
+                shortUrl: cleanUrl,
+              });
+            }
+          } else if (ev.event === "error") throw new Error(ev.data.error || "gagal");
+        },
+      );
+      if (done?.status !== "duplicate") await finish(done, cleanUrl);
     } catch (err) {
       onError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
+      setProg(null);
     }
   };
 
@@ -130,22 +138,14 @@ export function StepLink({ onSuccess, onError }: StepLinkProps) {
           />
         </div>
 
+        {prog && <ProgressBar percent={prog.percent} label={prog.label} />}
+
         <Button
           type="submit"
           disabled={loading || !url.trim()}
-          className="mt-2 flex items-center justify-center gap-2 bg-accent text-bg hover:bg-accent/90 text-xs font-medium py-2"
+          className="mt-2 flex items-center justify-center gap-2 bg-accent"
         >
-          {loading ? (
-            <>
-              <Loader2 size={14} className="animate-spin" />
-              <span>Memproses Link & Enrich Data…</span>
-            </>
-          ) : (
-            <>
-              <span>Lanjut ke Review Gambar</span>
-              <ArrowRight size={14} />
-            </>
-          )}
+          {loading ? "Memproses…" : "Proses Tautan →"}
         </Button>
       </form>
     </Card>

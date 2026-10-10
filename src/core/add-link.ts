@@ -98,8 +98,9 @@ export function normaliseLink(raw: string): { ok: true; url: string } | { ok: fa
  */
 export async function addLinkPipeline(
   input: AddLinkInput,
-  opts: { dryRun?: boolean } = {},
+  opts: { dryRun?: boolean; onStep?: (s: StepUpdate) => void } = {},
 ): Promise<AddLinkResult> {
+  const step = (stage: StepUpdate["stage"], label: string) => opts.onStep?.({ stage, label });
   const base: AddLinkResult = {
     short_url: input.short_url,
     status: "rejected",
@@ -107,6 +108,7 @@ export async function addLinkPipeline(
     og_found: false,
   };
 
+  step("validate", "Memeriksa format link…");
   const norm = normaliseLink(input.short_url);
   if (!norm.ok) return { ...base, reason: norm.reason };
 
@@ -122,7 +124,9 @@ export async function addLinkPipeline(
   let shopId: string | null = existing?.shopee_shop_id ?? null;
   let itemId: string | null = existing?.shopee_item_id ?? null;
   if (!itemId) {
+    step("resolve", "Mengikuti redirect Shopee…");
     const res = await resolveShopeeUrl(norm.url);
+    step("resolve", "Mengekstrak shop & item ID…");
     if (res.ok && res.shopee_item_id) {
       resolvedUrl = res.resolved_url;
       shopId = res.shopee_shop_id;
@@ -156,6 +160,7 @@ export async function addLinkPipeline(
   }
 
   // --- auto data lookup ---
+  step("og", "Membaca og:title product…");
   let og: Awaited<ReturnType<typeof fetchOg>> | null = null;
   let imageVerified = false;
   try {
@@ -165,6 +170,7 @@ export async function addLinkPipeline(
   }
   const ogFound = !!(og?.title || og?.image);
   if (og?.image) {
+    step("image", "Memverifikasi gambar produk (fetchable)…");
     const probe = await checkImageUrl(og.image);
     imageVerified = probe.ok;
   }
@@ -182,6 +188,7 @@ export async function addLinkPipeline(
       kategori = stored;
       kategori_source = "stored";
     } else if (product || og?.description) {
+      step("category", "Mengklasifikasikan kategori produk…");
       const guess = await classifyCategory(product || og?.title || "", og?.description || "");
       kategori = guess.category;
       kategori_source = "auto";
@@ -208,6 +215,7 @@ export async function addLinkPipeline(
   }
 
   // --- store ---
+  step("store", "Menyimpan ke database…");
   const inserted = addLink({
     short_url: norm.url,
     resolved_url: resolvedUrl,
@@ -287,6 +295,7 @@ export async function addLinkPipeline(
   }
 
   // --- append to the bio sheet (sequential; see the module note) ---
+  step("sheet", "Menambahkan produk ke Bio Link…");
   let sheet: AddLinkResult["sheet"];
   let sheetId: number | undefined;
   try {
@@ -350,23 +359,64 @@ export async function addLinkPipeline(
   };
 }
 
-/** Bulk entry point. Links are processed strictly one after another. */
+/** Bulk entry point. Links are processed strictly one after another.
+ * `onProgress` fires after each link so the API can stream live progress to
+ * the web UI (percent + current step), replacing the dead wait-on-one-
+ * request UX. */
 export async function addLinksBulk(
   inputs: AddLinkInput[],
-  opts: { dryRun?: boolean } = {},
+  opts: { dryRun?: boolean; onProgress?: (p: ProgressUpdate) => void; onStep?: (s: StepUpdate) => void } = {},
 ): Promise<BulkAddResult> {
+  const total = inputs.length;
   const results: AddLinkResult[] = [];
   for (const input of inputs) {
-    results.push(await addLinkPipeline(input, opts));
+    const result = await addLinkPipeline(input, { dryRun: opts.dryRun, onStep: opts.onStep });
+    results.push(result);
+    opts.onProgress?.({
+      index: results.length,
+      total,
+      short_url: input.short_url,
+      status: result.status,
+      label: progressLabel(result, input.short_url),
+    });
   }
   return {
-    total: inputs.length,
+    total,
     added: results.filter((r) => r.status === "added").length,
     updated: results.filter((r) => r.status === "updated").length,
     duplicate: results.filter((r) => r.status === "duplicate").length,
     rejected: results.filter((r) => r.status === "rejected").length,
     results,
   };
+}
+
+/** Stage-by-stage update fired while a single link is being processed. */
+export type StepUpdate = {
+  stage: "validate" | "resolve" | "og" | "image" | "category" | "store" | "sheet";
+  label: string;
+};
+
+/** Fired after each link finishes — enough for a live progress bar. */
+export type ProgressUpdate = {
+  index: number;
+  total: number;
+  short_url: string;
+  status: AddLinkResult["status"];
+  label: string;
+};
+
+function progressLabel(r: AddLinkResult, short_url: string): string {
+  const tail = short_url.replace(/^https?:\/\//, "").slice(0, 28);
+  switch (r.status) {
+    case "added":
+      return `✓ ${tail} — ${r.product || "tersimpan"}`;
+    case "updated":
+      return `✓ ${tail} — diperbarui`;
+    case "duplicate":
+      return `↻ ${tail} — duplikat (link ${r.link_id})`;
+    case "rejected":
+      return `✗ ${tail} — ${r.reason || "ditolak"}`;
+  }
 }
 
 /** Split a textarea blob (one link per line, commas tolerated) into inputs. */
