@@ -31,7 +31,7 @@ export type AuditSummary = {
 const HOURS: Record<AuditWindow, number> = { "24h": 24, "7d": 168, "30d": 720 };
 export const AUDIT_META_KEY = "self_audit_latest";
 export const AUDIT_EVENT = "system.self_audit";
-const ROUTER_BASE = process.env.AFFILIATE_ROUTER_BASE_URL || "https://router2nd.realpaytrans.my.id/v1";
+const ROUTER_BASE = process.env.AFFILIATE_ROUTER_BASE_URL || "https://router.realpaytrans.my.id/v1";
 const SELF_AUDIT_MODEL = (process.env.AFFILIATE_SELF_AUDIT_MODEL || "ag/gemini-3.8-flash").trim();
 
 /** Aggregate real rows into an audit summary. Pure: rows in, summary out. */

@@ -279,7 +279,8 @@ function detectScene(id: ProductIdentity): { scene: string; noun: string } | nul
   return null;
 }
 
-const FIDELITY_CLAUSE = "Keep the product exactly as in the reference — same design, colours, labels, proportions and features, no invented details.";
+const FIDELITY_CLAUSE = "Preserve the reference product exactly — identical shape, geometry, colour palette, labels, proportions and visible features. Do not restyle, recolor, simplify or replace any part.";
+const FIDELITY_CLAUSE_V2 = "Shape-lock and colour-lock active: the output must match the reference object's silhouette, edges, component count, dominant colours and material tones. Background and lighting may change; the product itself must not.";
 
 /** Prompt fragment for image regen — matches the product type and scene. */
 export function imagePromptFor(id: ProductIdentity): string {
@@ -304,21 +305,21 @@ export function imagePromptFor(id: ProductIdentity): string {
   };
 
   if (hit && sceneTemplates[hit.scene]) {
-    return `${sceneTemplates[hit.scene]!.replace("{noun}", hit.noun)} ${FIDELITY_CLAUSE}`;
+    return `${sceneTemplates[hit.scene]!.replace("{noun}", hit.noun)} ${FIDELITY_CLAUSE_V2}`;
   }
 
   const categoryPrompts: Record<string, string> = {
-    helm: `Professional e-commerce product photograph of a full-face motorcycle helmet on a pure white seamless background, soft directional lighting, clean drop shadow, 45-degree three-quarter angle showing shell curvature and visor detail. ${FIDELITY_CLAUSE}`,
-    tas: `Professional e-commerce product photograph of a bag/backpack on a light concrete studio surface with soft diffused shadow, slight overhead angle. ${FIDELITY_CLAUSE}`,
-    sepatu: `Professional e-commerce product photograph of footwear on a seamless stone-grey background, laces visible, soft directional light, clean drop shadow. ${FIDELITY_CLAUSE}`,
-    gadget: `Professional e-commerce product photograph of a small electronic gadget on a matte grey seamless surface with subtle flat-lay composition, precise edge lighting, clean shadow, catalogue quality. ${FIDELITY_CLAUSE}`,
-    rumah: `Warm lifestyle product photograph of a home item styled in a cozy modern living room, soft daylight, tidy modern decor, shallow depth of field, catalogue quality. ${FIDELITY_CLAUSE}`,
-    fashion: `Fashion e-commerce product photograph of an outfit on a ghost mannequin against a light grey studio backdrop, soft diffused lighting, fabric texture crisp, catalogue quality. ${FIDELITY_CLAUSE}`,
-    skincare: `Clean beauty product photograph of a skincare product on a glossy white podium with soft water-splash bokeh background, fresh dewy lighting, premium skincare-ad quality. ${FIDELITY_CLAUSE}`,
-    outdoor: `Rugged outdoor product photograph of outdoor gear on dark volcanic rock with blurred pine-forest background, dramatic natural light, adventure-catalogue quality. ${FIDELITY_CLAUSE}`,
-    mainan: `Cheerful product photograph of a toy on a pastel-yellow seamless background with soft confetti bokeh, bright playful lighting, toy-catalogue quality. ${FIDELITY_CLAUSE}`,
-    olahraga: `Dynamic sports product photograph of sports gear on a dark charcoal gym backdrop with dramatic rim lighting, sense of motion, fitness-catalogue quality. ${FIDELITY_CLAUSE}`,
-    default: `Professional e-commerce product photograph of ${productTypeLabel} on a pure white seamless studio background, soft directional lighting and clean drop shadow. ${FIDELITY_CLAUSE}`,
+    helm: `Professional e-commerce product photograph of a full-face motorcycle helmet on a pure white seamless background, soft directional lighting, clean drop shadow, 45-degree three-quarter angle showing shell curvature and visor detail. ${FIDELITY_CLAUSE_V2}`,
+    tas: `Professional e-commerce product photograph of a bag/backpack on a light concrete studio surface with soft diffused shadow, slight overhead angle. ${FIDELITY_CLAUSE_V2}`,
+    sepatu: `Professional e-commerce product photograph of footwear on a seamless stone-grey background, laces visible, soft directional light, clean drop shadow. ${FIDELITY_CLAUSE_V2}`,
+    gadget: `Professional e-commerce product photograph of a small electronic gadget on a matte grey seamless surface with subtle flat-lay composition, precise edge lighting, clean shadow, catalogue quality. ${FIDELITY_CLAUSE_V2}`,
+    rumah: `Warm lifestyle product photograph of a home item styled in a cozy modern living room, soft daylight, tidy modern decor, shallow depth of field, catalogue quality. ${FIDELITY_CLAUSE_V2}`,
+    fashion: `Fashion e-commerce product photograph of an outfit on a ghost mannequin against a light grey studio backdrop, soft diffused lighting, fabric texture crisp, catalogue quality. ${FIDELITY_CLAUSE_V2}`,
+    skincare: `Clean beauty product photograph of a skincare product on a glossy white podium with soft water-splash bokeh background, fresh dewy lighting, premium skincare-ad quality. ${FIDELITY_CLAUSE_V2}`,
+    outdoor: `Rugged outdoor product photograph of outdoor gear on dark volcanic rock with blurred pine-forest background, dramatic natural light, adventure-catalogue quality. ${FIDELITY_CLAUSE_V2}`,
+    mainan: `Cheerful product photograph of a toy on a pastel-yellow seamless background with soft confetti bokeh, bright playful lighting, toy-catalogue quality. ${FIDELITY_CLAUSE_V2}`,
+    olahraga: `Dynamic sports product photograph of sports gear on a dark charcoal gym backdrop with dramatic rim lighting, sense of motion, fitness-catalogue quality. ${FIDELITY_CLAUSE_V2}`,
+    default: `Professional e-commerce product photograph of ${productTypeLabel} on a pure white seamless studio background, soft directional lighting and clean drop shadow. ${FIDELITY_CLAUSE_V2}`,
   };
   return categoryPrompts[type] || categoryPrompts.default!;
 }

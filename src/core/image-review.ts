@@ -9,11 +9,11 @@
  *   3. REJECT -> variant file is KEPT (review UI later) but link.image_url is
  *      NOT touched: the post falls back to the sealed original photo.
  *
- * Same gateway + key as router-image.ts (router2nd.realpaytrans.my.id).
+ * Same gateway + key as router-image.ts (router.realpaytrans.my.id).
  * Zero deps. Both calls bounded (~30s total worst case).
  */
 
-const BASE = (process.env.AFFILIATE_ROUTER_BASE_URL || "https://router2nd.realpaytrans.my.id/v1").replace(/\/+$/, "");
+const BASE = (process.env.AFFILIATE_ROUTER_BASE_URL || "https://router.realpaytrans.my.id/v1").replace(/\/+$/, "");
 // 2026-10-03: mimo (openai provider) dead on router2nd — 403/404 "Edge
 // unavailable"/"No active credentials". Proven control-pair replacement:
 // ag/gemini-3.8-flash (YES on pump, NO on backpack). Old mimo kept as
@@ -82,6 +82,35 @@ async function jevApprove(state: string): Promise<Record<string, number>> {
     questions: {
       is_match: { type: "noul", instructions: "Does the vision verdict confirm the photo shows the advertised product (YES verdict)?" },
       is_safe: { type: "noul", instructions: "Given the report, is the photo clean and usable for auto-posting — correct object, no drift, no corruption, acceptable quality?" },
+      is_shape_locked: { type: "noul", instructions: "Does the generated image keep the same object shape, silhouette, edges and component layout as the reference product? 0 = completely changed, 1 = preserved." },
+      is_color_locked: { type: "noul", instructions: "Does the generated image keep the same dominant colours and material tones as the reference product? 0 = recolored, 1 = preserved." },
+    },
+  };
+  const res = await fetch(`${BASE}/systemone`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey()}` },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(90_000),
+  });
+  if (!res.ok) throw new Error(`systemone HTTP ${res.status}`);
+  const j = await res.json() as any;
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries<any>(j?.answers ?? {})) {
+    if (typeof v?.noul === "number") out[k] = v.noul;
+  }
+  return out;
+}
+
+async function jevApproveWithFidelity(product: string, mimo: string, signals: { backend: string; byteLen: number }): Promise<Record<string, number>> {
+  const state = `Product: ${product}. Vision verdict: "${mimo}". Backend: ${signals.backend}, bytes: ${signals.byteLen}. Judge this image for auto-posting with hard fidelity checks.`;
+  const body = {
+    model: JUDGE_MODEL,
+    state,
+    questions: {
+      is_match: { type: "noul", instructions: "Does the vision verdict confirm the photo shows the advertised product?" },
+      is_safe: { type: "noul", instructions: "Is the photo clean and usable for auto-posting: correct object, no drift, no corruption, acceptable quality?" },
+      is_shape_locked: { type: "noul", instructions: "Does the image preserve the reference product's shape, silhouette, edges, component layout and proportions? 0 = changed, 1 = preserved." },
+      is_color_locked: { type: "noul", instructions: "Does the image preserve the reference product's dominant colours and material tones? 0 = recolored, 1 = preserved." },
     },
   };
   const res = await fetch(`${BASE}/systemone`, {
@@ -114,16 +143,9 @@ export async function reviewCreative(
   const empty = { approved: false, reason: "", mimo_says: "", jev_scores: {} };
   try {
     const mime = sniffMime(bytes);
-    // Oversize: we CANNOT judge it — that is an infra limit, not a verdict.
-    // Mark as review-infra-fail so the caller's fallback (live) applies;
-    // blocking the creative for our own size limit is what shipped wrong
-    // behaviour before. Proven: mimo takes 500-700KB JPEG fine (HTTP 200).
     if (bytes.length > 4_000_000) return { ...empty, reason: "review-infra-fail: oversize-for-vision" };
     const dataUri = `data:${mime};base64,${bytes.toString("base64")}`;
     const mimo = await mimoCheck(product, dataUri);
-    // A gateway can answer HTTP 200 with a quota/billing notice instead of a
-    // verdict (proven live: bdl/deepseek-vision -> "Your quota is exhausted").
-    // That is NOT a review — treat it as infra-fail so REQUIRE_GATE can act on it.
     if (/quota\s+is\s+exhausted|API key required|insufficient credit/i.test(mimo)) {
       return { ...empty, reason: `review-infra-fail: vision-quota-gate: ${mimo.slice(0, 120)}` };
     }
@@ -131,16 +153,17 @@ export async function reviewCreative(
     if (!yes) {
       return { approved: false, reason: `vision-reject: ${mimo.slice(0, 160)}`, mimo_says: mimo.slice(0, 300), jev_scores: {} };
     }
-    const scores = await jevApprove(
-      `Product: ${product}. Vision model verdict on generated photo: "${mimo}". ` +
-      `Backend: ${signals.backend}, file bytes: ${signals.byteLen}. Approve for auto-posting?`,
-    );
-    const ok = (scores.is_match ?? 0) >= 0.6 && (scores.is_safe ?? 0) >= 0.6;
+
+    const jev = await jevApproveWithFidelity(product, mimo, signals);
+    const ok = (jev.is_match ?? 0) >= 0.6 && (jev.is_safe ?? 0) >= 0.6 && (jev.is_shape_locked ?? 0) >= 0.6 && (jev.is_color_locked ?? 0) >= 0.6;
+    const reason = ok
+      ? `jev-approve match=${jev.is_match} safe=${jev.is_safe} shape=${jev.is_shape_locked} color=${jev.is_color_locked}`
+      : `jev-reject ${JSON.stringify(jev)}`;
     return {
       approved: ok,
-      reason: ok ? `jev-approve match=${scores.is_match} safe=${scores.is_safe}` : `jev-reject ${JSON.stringify(scores)}`,
+      reason,
       mimo_says: mimo.slice(0, 300),
-      jev_scores: scores,
+      jev_scores: jev,
     };
   } catch (e) {
     return { ...empty, reason: `review-infra-fail: ${String(e).slice(0, 120)}` };

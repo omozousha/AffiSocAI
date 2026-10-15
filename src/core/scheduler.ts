@@ -1151,7 +1151,7 @@ export async function tick(now = new Date()): Promise<{ ran: SlotRow[]; created:
       let generated = 0;
       if (key && process.env.AFFILIATE_HOOK_LAB_AI !== "0") {
         const complete = async (prompt: string): Promise<string | null> => {
-          const r = await fetch(`${process.env.AFFILIATE_ROUTER_BASE_URL || "https://router2nd.realpaytrans.my.id/v1"}/chat/completions`, {
+          const r = await fetch(`${process.env.AFFILIATE_ROUTER_BASE_URL || "https://router.realpaytrans.my.id/v1"}/chat/completions`, {
             method: "POST",
             signal: AbortSignal.timeout(30_000),
             headers: { authorization: `Bearer ${process.env.AFFILIATE_ROUTER_KEY ?? ""}`, "content-type": "application/json" },

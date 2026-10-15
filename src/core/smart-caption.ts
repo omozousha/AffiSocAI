@@ -22,7 +22,7 @@ import { logActivity } from "./activity-log.ts";
 import { typeLabel } from "./product-identity.ts";
 import { BIO_LINE, bioLineFor, tagsFor, COMMUNITY_TAG, COMMUNITY_TOPIC } from "./mystery-caption.ts";
 
-const BASE = process.env.AFFILIATE_ROUTER_BASE_URL || "https://router2nd.realpaytrans.my.id/v1";
+const BASE = process.env.AFFILIATE_ROUTER_BASE_URL || "https://router.realpaytrans.my.id/v1";
 const CHAIN = (process.env.AFFILIATE_SMART_MODEL || "ag/gemini-3.8-flash,ag/gemini-3.7-flash,jj/qwen3.8-flash").split(",");
 
 export type SmartStory = { hook: string; why: string; cta: string };

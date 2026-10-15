@@ -8,7 +8,7 @@
  * recognisably the product the buyer will receive.
  *
  * Backend: the free Google image model on the 9router gateway
- * (router2nd.realpaytrans.my.id), model `ag/gemini-3.1-flash-image`. It is not
+ * (router.realpaytrans.my.id), model `ag/gemini-3.1-flash-image`. It is not
  * listed in /v1/models — it is a hidden alias that works when called directly,
  * which is why the model name is a constant here and not read from the models
  * list.

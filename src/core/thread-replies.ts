@@ -147,7 +147,7 @@ export async function aiReplyText(
 ): Promise<string | null> {
   const key = (process.env.AFFILIATE_ROUTER_KEY || "").trim();
   if (!key) return null;
-  const base = (process.env.AFFILIATE_ROUTER_BASE_URL || "https://router2nd.realpaytrans.my.id/v1").replace(/\/+$/, "");
+  const base = (process.env.AFFILIATE_ROUTER_BASE_URL || "https://router.realpaytrans.my.id/v1").replace(/\/+$/, "");
   const models = (process.env.AFFILIATE_REPLY_MODEL || "ag/gemini-3.8-flash,jj/qwen3.8-flash").split(",");
   const system =
     `Kamu admin rekomendasi yang ramah, balas komentar Threads pakai bahasa Indonesia santai. ` +
