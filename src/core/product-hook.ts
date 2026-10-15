@@ -194,6 +194,28 @@ const HOOKS: HooksByType = {
       cta: "Tag teman yang baru mulai tapi udah ngebut. Perlengkapannya nunggu di bio.",
     },
   ],
+  // ── LINGKUP 6 — MAKANAN ───────────────────────────────────────────────
+  // Food posts educate about taste/selection/storage, never about "barang".
+  // Rules from the operator directive: no price claims, no health claims,
+  // no "sudah dicoba" — general food knowledge only.
+  // ──────────────────────────────────────────────────────────────────────
+  makanan: [
+    {
+      open: "Ngemil nggak harus ngerasa bersalah — kalau pilihannya bener. 🍿",
+      why: "Baca label dulu sebelum ambil camilan: daftar bahan pendek dan bisa dibaca itu sinyal paling jujur. Yang paling ngefek buat kontrol porsi bukan mereknya, tapi ukuran satu saing — camilan yang dijualin bungkusan kecil otomatis ngatur porsi, tanpa perlu nahan diri.",
+      cta: "Tag temen yang kulkasnya selalu punya camilan rahasia. Varian rasa dan detailnya di bio.",
+    },
+    {
+      open: "Camilan yang bikin nagih biasanya bukan karena gulanya doang. 🤔",
+      why: "Tekstur dan aroma sering lebih nentuin daripada rasa manis — gurih yang pas, kriuk yang tahan lama, dan bumbu yang nyerempet di lidah bikin tangan balik ke bungkus berkali-kali. Karena itu bumbu yang meresap rata biasanya lebih berkesan daripada yang cuma nempel di permukaan.",
+      cta: "Komunitas pencinta bumbu, share bumbu favorit kalian di komentar. Yang lagi viral ada di bio.",
+    },
+    {
+      open: "Satu hal soal bumbu dapur yang jarang diomongin padahal ngubah rasa. 🧂",
+      why: "Bumbu kering itu soal keseimbangan, bukan banyaknya: garam, manis, asam, dan pedas saling nutup kelebihan masing-masing. Marinasi butuh waktu nyerep — bumbu yang cuma ditempel 5 menit di luar, dibanding 30 menit masuk ke dalam, hasilnya beda meski bahannya sama.",
+      cta: "Tim masak sehari-hari, share trik marinasi kalian di komentar. Lengkapnya di bio.",
+    },
+  ],
   default: [
     {
       open: "Nggak aku sebut namanya — tapi yang satu ini bikin berhenti scroll. 🤫",
@@ -259,7 +281,7 @@ const SCENE_RULES: Array<{ scene: string; terms: Array<[RegExp, string]> }> = [
   // 1. Drinkware BEFORE food: kategori "Minuman" matches the food list too.
   { scene: "drinkware", terms: [[/TUMBLER/, "insulated stainless steel tumbler"], [/BOTOL\s*MINUM|WATER\s*BOTTLE/, "water bottle"], [/TERMOS|THERMOS/, "vacuum flask"], [/MUG|CANGKIR/, "mug"]] },
   { scene: "kitchen", terms: [[/COFFEE\s*GRINDER|GRINDER|GILINGAN/, "electric coffee grinder"], [/COFFEE\s*(MAKER|BREWER|MACHINE)/, "coffee maker"], [/BLENDER/, "blender"], [/MIXER/, "hand mixer"], [/JUICER/, "juicer"], [/AIR\s*FRYER/, "air fryer"], [/MICROWAVE/, "microwave oven"], [/OVEN/, "oven"], [/RICE\s*COOKER/, "rice cooker"], [/KETTLE|TEKO/, "electric kettle"], [/KOMPOR/, "portable stove"], [/PANCI/, "cooking pot"], [/KITCHEN\s*SINK|SINK\s*FILTER|PENYARING\s*AIR/, "kitchen sink water filter"]] },
-  { scene: "food", terms: [[/POPCORN/, "salted caramel popcorn snack"], [/DRY\s*RUB|MARINASI|BUMBU/, "BBQ dry rub seasoning"], [/COKLAT|CHOCOLATE/, "chocolate confectionery"], [/KUE|COOKIE/, "cookies"], [/KERIPIK|CHIPS/, "potato chips"], [/SAMBAL|SAUS/, "chili sauce"], [/SUSU/, "milk beverage"], [/MAKANAN|SNACK/, "packaged snack food"]] },
+  { scene: "food", terms: [[/POPCORN/, "salted caramel popcorn snack"], [/DRY\s*RUB|MARINASI|BUMBU/, "BBQ dry rub seasoning"], [/COKLAT|CHOCOLATE|KHUNAFA|KUNAFA|PISTACHIO|DUBAI\s*(CHOCO|COKLAT)/, "chocolate confectionery"], [/KUE|COOKIE|BISKUIT|ROTI|BAKERY/, "cookies"], [/KERIPIK|CHIPS/, "potato chips"], [/SAMBAL|SAUS|KECAP/, "chili sauce"], [/SUSU/, "milk beverage"], [/MIE\b|NOODLE/, "instant noodle pack"], [/MAKANAN|SNACK|CAMILAN|FROZEN|DIMSUM/, "packaged snack food"]] },
   { scene: "entryway", terms: [[/RAK\s*SEPATU|SHOE\s*RACK/, "shoe rack"], [/BOX\s*SEPATU|KOTAK\s*SEPATU/, "shoe storage box"], [/RAK\s*BUKU/, "bookshelf"], [/GANTUNGAN/, "wall hanger"], [/ORGANIZER/, "storage organizer"], [/LEMARI/, "cabinet"]] },
   { scene: "bedroom", terms: [[/BANTAL\s*GULING|GULING/, "bolster pillow"], [/BANTAL/, "bed pillow"], [/KASUR|MATRAS/, "mattress"], [/SPREI/, "bed sheet"], [/SELIMUT/, "blanket"]] },
   { scene: "decor", terms: [[/PENGHARUM|AROMATERAPI|DIFFUSER/, "reed diffuser aroma"], [/HUMIDIFIER/, "humidifier"], [/LILIN|CANDLE/, "scented candle"], [/LAMPU\s*TIDUR/, "bedside lamp"], [/VASE|VAS\s*BUNGA/, "flower vase"]] },
@@ -319,6 +341,7 @@ export function imagePromptFor(id: ProductIdentity): string {
     outdoor: `Rugged outdoor product photograph of outdoor gear on dark volcanic rock with blurred pine-forest background, dramatic natural light, adventure-catalogue quality. ${FIDELITY_CLAUSE_V2}`,
     mainan: `Cheerful product photograph of a toy on a pastel-yellow seamless background with soft confetti bokeh, bright playful lighting, toy-catalogue quality. ${FIDELITY_CLAUSE_V2}`,
     olahraga: `Dynamic sports product photograph of sports gear on a dark charcoal gym backdrop with dramatic rim lighting, sense of motion, fitness-catalogue quality. ${FIDELITY_CLAUSE_V2}`,
+    makanan: `Appetizing commercial food photography of a food package styled on a warm wooden dining tabletop, soft natural lighting, natural gourmet props softly blurred in background, high-end food magazine editorial quality. ${FIDELITY_CLAUSE_V2}`,
     default: `Professional e-commerce product photograph of ${productTypeLabel} on a pure white seamless studio background, soft directional lighting and clean drop shadow. ${FIDELITY_CLAUSE_V2}`,
   };
   return categoryPrompts[type] || categoryPrompts.default!;

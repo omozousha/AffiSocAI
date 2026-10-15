@@ -49,6 +49,7 @@ export type ProductType =
   | "olahraga"
   | "rumah"
   | "fashion"
+  | "makanan"
   | "lain";
 
 export function detectType(id: ProductIdentity): ProductType {
@@ -68,8 +69,22 @@ export function detectType(id: ProductIdentity): ProductType {
   if (/PENGERING\s*(PAKAIAN|BAJU|SEPATU|RAMBUT|PIRING|GELAS|TANGAN|BOTOL)?\s*(PORTABLE|MINI|ELEKTRONIK|BAHAN)?|DRYER|DEHUMIDIFIER|HUMIDIFIER|DIFFUSER|STERILIZER|STEAMER|SETRIKA|\bIRON\b|VACUUM|PENGHISAP|AIR\s*FRYER|MESIN\s*CUCI|WASHER/.test(hay)) return "gadget";
   if (/COFFEE\s*(MAKER|GRINDER|BREWER|MACHINE)|GRINDER|GILINGAN|BLENDER|MIXER|JUICER|OVEN|MICROWAVE|PANCI|TEKO|KETTLE|RICE\s*COOKER|KOMPOR\s*LISTRIK|DISPENSER|AIR\s*MINERAL|LAMPU\s*UV|PEMANAS\s*(AIR|MINUM)|WATER\s*HEATER|PENGHANGAT/.test(hay)) return "rumah";
   if (/PROYEKTOR|PROJECTOR|SPEAKER|KIPAS|FAN|KAMERA|CAMERA|CCTV|PROYEK|MESIN\s*KASIR|BARCODE|SCANNER/.test(hay)) return "gadget";
+  // appliances that TOUCH food are still appliances, not food: cold-brew
+  // bottle, vacuum sealer, food chopper. (proven live: links 63/64)
+  if (/BOTOL|BOTTLE|TUMBLER|VACUUM\s*SEALER|SEALER|CHOPPER|PENGOLAH|FOOD\s*PROCESSOR/.test(hay)) return "rumah";
 
   if (/HELM|KACAMATA|SUNGLASS|HEADGEAR/.test(hay)) return "helm";
+  // ── LINGKUP 6 — MAKANAN FIRST ─────────────────────────────────────────
+  // Food/snack keywords outrank gadget/rumah: "Coffee Maker" is an appliance
+  // (matched above in LINGKUP 3), but "Coffee Candy", "Coklat", "Popcorn"
+  // are food. This block sits AFTER the appliance block so machines stay
+  // machines, but BEFORE everything else so snacks never fall to `lain`.
+  // Proven live: link 8 (Dry Rub), 11 (Popcorn), 25 (Coklat Dubai) all
+  // published with generic "barang" hooks.
+  // ──────────────────────────────────────────────────────────────────────
+  // NOTE: MIE matches instant noodles — but "Mie..." never starts an
+  // appliance title, while BOTOL/SEALER titles do; those are caught above.
+  if (/MAKANAN|FOOD(?!S?\s+(PROCESSOR|CHOPPER|CONTAINER|STORAGE))|SNACK|CAMILAN|JAJAN|KUE\b|COOKIE|KERIPIK|CHIPS|POPCORN|COKLAT|CHOCOLATE|PERMEN|CANDY|BUMBU|MARINASI|DRY\s*RUB|SAUS\b|SAUCE|SAMBAL|KECAP|MIE\b|MIE\s|NOODLE|KOPI\b(?!.*(GRINDER|MAKER|ELEKTRIK))|COFFEE\s*(CANDY|BEAN|SNACK)|SUSU\b|MILK|TEH\b|TEA\s*(CELUP|BOTOL)|MINUMAN|BAVERAGE|ROTI|CAKE|BISKUIT|CUPCAKE|CILOK|BASO\s*ACI|SEBLAK|DIMSUM|FROZEN\s*FOOD|DUBAI\s*(CHOCO|COKLAT)|KHUNAFA|KUNAFA|PISTACHIO/.test(hay)) return "makanan";
   if (/SEPATU|SANDAL|SHOES|SNEAKERS|SLIPON/.test(hay)) return "sepatu";
   // ORDER MATTERS + WORD BOUNDARIES: "SERBAGUNA" contains "BAG", "KERTAS"
   // contains "TAS" — bare substrings turn a folding chair into a bag.
@@ -98,6 +113,7 @@ export function typeLabel(t: ProductType): string {
     olahraga: "gear olahraga",
     rumah: "barang rumah",
     fashion: "outfit",
+    makanan: "camilan",
     lain: "barang",
   };
   return m[t] || "barang";

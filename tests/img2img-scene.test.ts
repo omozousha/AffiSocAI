@@ -48,7 +48,9 @@ for (const c of CASES) {
 test("img2img: every scene prompt keeps the fidelity clause", () => {
   for (const c of CASES) {
     const p = prompt(c.product, c.kategori);
-    assert.match(p, /keep the product exactly as in the reference/i, c.name);
+    // FIDELITY_CLAUSE was replaced by FIDELITY_CLAUSE_V2 (shape-lock wording);
+    // either wording satisfies the invariant that identity is declared absolute.
+    assert.match(p, /keep the product exactly as in the reference|Shape-lock and colour-lock active/i, c.name);
   }
 });
 

@@ -21,6 +21,7 @@ export const CATEGORIES = [
   "Komputer",
   "Fotografi",
   "Hobi",
+  "Makanan",
   "Lainnya",
 ] as const;
 
@@ -29,6 +30,8 @@ export type Category = (typeof CATEGORIES)[number];
 export type CategoryResult = { category: Category; confidence: number; source: "keyword" | "llm" | "cache" };
 
 const RULES: Array<[Category, RegExp]> = [
+  // food FIRST — "Foods"/"Bumbu"/"Coklat" must never reach Lainnya
+  ["Makanan", /\bFOOD\b|MAKANAN|SNACK|CAMILAN|BUMBU|MARINASI|DRY RUB|COKLAT|CHOCOLATE|POPCORN|KERIPIK|CHIPS|PERMEN|CANDY|KUE\b|COOKIE|BISKUIT|ROTI|SAUS|SAMBAL|KECAP|MIE\b|NOODLE|SUSU\b|KOPI\b|COFFEE BEAN|TEH\b|MINUMAN|FROZEN|DIMSUM|BAKERY/i],
   ["Aksesoris HP", /CHARGER|CABLE|KABEL|\bCASE\b|CASSING|TEMPERED|POWERBANK|EARPHONE|HEADSET|\bTWS\b|HOLDER|MAGSAFE|\bFAN\b|PENDINGIN|\bCOOLER\b|RADIATOR/i],
   ["Elektronik", /TV|SPEAKER|EARBUD|HEADPHONE|SMARTWATCH|SCC|KIPAS ANGIN|LAMPU LED|BLENDER|RICE COOKER|VAKUM|ELEKTRONIK/i],
   ["Komputer", /MOUSE|KEYBOARD|MONITOR|LAPTOP|SSD|HDD|WEBCAM|PRINTER|USB HUB/i],

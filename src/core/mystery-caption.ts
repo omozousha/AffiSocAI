@@ -40,6 +40,8 @@ export function bioLineFor(sheetId?: number | null): string {
 export function categoryClue(kategori: string | null | undefined): string {
   const k = (kategori || "").toUpperCase();
   const m: Array<[RegExp, string]> = [
+    // food FIRST — "Foods"/"Makanan"/"Bumbu" must never fall to "barang"
+    [/FOOD|MAKANAN|SNACK|CAMILAN|BUMBU|MIE|FROZEN|BAKERY|KUE/, "camilan"],
     [/FASHY|BAJU|PAKAIAN|KAOS|KEMEJA|DRESS|HOODIE|JAKET|CELANA|SHIRT/, "outfit"],
     [/SEPATU|SANDAL|SHOES|SNEAKERS|SLIPON/, "sepatu"],
     [/TAS|BAG|BACKPACK|RANSEL|DOMPET|WALLET/, "tas"],
@@ -92,6 +94,7 @@ function fbMystery(hook: HookVariant, tags: string[], bioLine: string = BIO_LINE
 
 const TAGS: Record<string, string[]> = {
   helm: ["#helm", "#helmetlovers", "#rider", "#otomotif", "#linkdiobio"],
+  makanan: ["#camilan", "#makanan", "#snack", "#kuliner", "#rekomendasi", "#linkdiobio"],
   gadget: ["#gadget", "#tech", "#setup", "#rekomendasi", "#linkdiobio"],
   rumah: ["#rumah", "#homedecor", "#kamaraesthetic", "#rekomendasi", "#linkdiobio"],
   fashion: ["#ootd", "#fashion", "#outfit", "#rekomendasi", "#linkdiobio"],

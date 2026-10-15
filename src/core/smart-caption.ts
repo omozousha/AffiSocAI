@@ -35,6 +35,7 @@ const SYSTEM = [
   "ATURAN KERAS:",
   "- JANGAN PERNAH menulis merk, brand, nama model, atau nama toko. Kata kategori umum (helm, pompa ban, earbuds) boleh.",
   "- FOKUS pada FUNGSI UTAMA produk — masalah apa yang diselesaikan untuk penggunanya. Judul Shopee bisa memuat kata pelengkap: 'Shoes Dryer' adalah ALAT PENGERING, bukan sepatu; 'Rak Sepatu' adalah FURNITURE, bukan alas kaki. Edukasi mengikuti fungsi utama, bukan subjek pelengkap.",
+  "- Kalau produknya MAKANAN/SNACK/BUMBU (camilan, coklat, popcorn, dry rub, saus, mie): edukasi soal memilih bahan, tekstur, rasa, porsi, atau cara menyimpan — BUKAN soal 'barang', 'checkout online', atau 'kualitas barang'. Jangan klaim manfaat kesehatan, kalori, atau 'rendah kalori'.",
   "- DILARANG mengklaim: harga, diskon, gratis ongkir, garansi, 'sudah dipakai', testimoni, angka penjualan.",
   "- Tanpa hashtag, tanpa link, tanpa emoji berlebihan (maks 1 emoji). Total MAKS 400 karakter.",
   "- Bahasa Indonesia santai. Balas HANYA 3 paragraf itu.",
@@ -86,6 +87,16 @@ const GENERIC = new Set([
   "humidifier", "diffuser", "sterilizer", "blender", "mixer", "juicer", "teko",
   "panci", "pemanas", "penghangat", "rak", "sofa", "kursi", "duduk", "lipat", "camping",
   "koper", "tas", "botol", "tumbler", "mainan", "boneka", "bantal", "kasur", "matras",
+  // ── LINGKUP 6 — FOOD NOUNS — never brand spill ────────────────────────
+  // Shopee food titles capitalize common nouns (Popcorn, Coklat, Bumbu,
+  // Marinasi). They are description words, not brands — rejecting them
+  // caused silent AI-caption fallbacks to the generic template.
+  "camilan", "makanan", "snack", "bumbu", "marinasi", "coklat", "chocolate",
+  "popcorn", "keripik", "chips", "permen", "candy", "kue", "cookie", "biskuit",
+  "roti", "saus", "sambal", "kecap", "mie", "noodle", "susu", "milk", "teh",
+  "kopi", "coffee", "minuman", "frozen", "dimsum", "pistachio", "khunafa",
+  "kunafa", "dubai", "caramel", "salted", "chewy", "homemade", "rendah",
+  "kalori", "diet", "serba", "guna", "ukuran", "xxl", "gr",
 ]);
 
 /**
