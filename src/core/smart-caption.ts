@@ -27,6 +27,33 @@ const CHAIN = (process.env.AFFILIATE_SMART_MODEL || "ag/gemini-3.8-flash,ag/gemi
 
 export type SmartStory = { hook: string; why: string; cta: string };
 
+// ── LINGKUP 7 — TYPE CONSISTENCY GUARD ───────────────────────────────────
+// Proven live failure: food links 8/11/25 published with generic "barang"
+// copy (content 51-53, 72-74, 122-127) — the hooks below are the verbatim
+// opener/edu phrases of the `lain`/`rumah` pools. detectType now returns
+// `makanan` for those links (lingkup 6); this guard keeps AI stories and
+// composed drafts honest about the type at publish time.
+const GENERIC_BARREL =
+  /Tebak ini apa di komentar|Tips checkout online|Barang yang kelihatan biasa|Satu barang bikin berhenti scroll|Satu barang rumah yang bikin tamu|Garis desainnya clean|Yang bikin keren: bentuk dan warnanya|ngebenerin masalah harian/i;
+const FOOD_MARKERS =
+  /\bngemil\b|\bcamilan\b|\bbumbu\b|marinasi|renyah|gurih|#makanan|#snack|#camilan/i;
+
+/**
+ * Why a caption body does not match the product type. [] = consistent.
+ * `lain` is the catch-all pool — generic copy is legal there by design.
+ */
+export function typeMismatch(type: ReturnType<typeof detectType>, text: string): string[] {
+  const reasons: string[] = [];
+  if (type === "makanan") {
+    if (/\bbarang\b/i.test(text)) reasons.push("barang@food");
+    if (GENERIC_BARREL.test(text)) reasons.push("generic-copy@food");
+  } else if (type !== "lain") {
+    if (GENERIC_BARREL.test(text)) reasons.push(`generic-copy@${type}`);
+    if (FOOD_MARKERS.test(text)) reasons.push(`food-copy@${type}`);
+  }
+  return reasons;
+}
+
 const SYSTEM = [
   "Kamu copywriter affiliate Shopee Indonesia. Tulis 3 paragraf caption social post (dipisah baris kosong):",
   "1) HOOK satu kalimat scroll-stopping tentang masalah/keinginan yang diselesaikan kategori produk ini.",
@@ -210,7 +237,16 @@ export async function smartCaption(
     const out = await callModel(model.trim(), user, key);
     if (!out) continue;
     const story = validateStory(out, link.product);
-    if (story) return story;
+    if (story) {
+      // LINGKUP 7: structurally valid but semantically wrong type (e.g.
+      // "Satu barang..." for a food product) = reject, try next model, then
+      // the caller's type-correct template draft.
+      const bad = typeMismatch(type, `${story.hook}\n${story.why}\n${story.cta}`);
+      if (bad.length === 0) return story;
+      logActivity({ level: "warn", source: "system", event: "caption.reject",
+        message: `${model}: type mismatch (${bad.join(", ")})` });
+      continue;
+    }
     // silent fallback cost us a debug cycle (2026-10-05 slot 38908) — say why.
     logActivity({ level: "warn", source: "system", event: "caption.reject",
       message: `${model}: AI text failed validator (${whyReject(out, link.product)})` });

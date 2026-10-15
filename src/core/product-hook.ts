@@ -252,7 +252,17 @@ export function setHookPerf(json: string | null): void {
 
 export function pickHook(id: ProductIdentity, publishIndex: number): HookVariant {
   const type = detectType(id);
-  const pool = HOOKS[type] ?? HOOKS.default;
+  let pool = HOOKS[type] ?? HOOKS.default;
+  // LINGKUP 7 — food sub-kind: a snack (popcorn, coklat, keripik) must not get
+  // the "bumbu dapur / marinasi" hook, and a seasoning must not get the
+  // "ngemil" hook. Split the makanan pool by product kind. (proven: link 11
+  // Popcorn + link 25 Coklat both drew the bumbu variant.)
+  if (type === "makanan") {
+    const hay = `${id.name || ""} ${id.kategori || ""}`.toUpperCase();
+    const seasoning = /BUMBU|MARINASI|DRY\s*RUB|SAUS|SAMBAL|KECAP|SEASONING|REMPAH/.test(hay);
+    const food = HOOKS.makanan ?? [];
+    pool = seasoning ? [food[2]!] : [food[0]!, food[1]!];
+  }
   const clue = typeLabel(type);
   const fill = (s: string) => s.replace(/\{\{clue\}\}/g, clue);
   const filled = pool.map((h) => ({ open: fill(h.open), why: fill(h.why), cta: fill(h.cta) }));

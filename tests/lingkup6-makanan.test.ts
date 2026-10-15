@@ -60,6 +60,16 @@ describe("Lingkup 6 — hooks, tags, clues are food-flavoured", () => {
       assert.ok(!/\{\{/.test(h.open + h.why + h.cta), "unfilled placeholder in hook");
     }
   });
+  it("seasoning gets the bumbu hook, snacks never do", () => {
+    const seasoning = pickHook(id("Sprices BBQ Dry Rub Bumbu Marinasi", "Foods"), 0);
+    assert.match(seasoning.open, /bumbu dapur/i, `seasoning hook: ${seasoning.open}`);
+    for (let i = 0; i < 3; i++) {
+      const snack = pickHook(id("Rituals Food Salted Caramel Popcorn 500gr", "Foods"), i);
+      assert.doesNotMatch(snack.open, /bumbu dapur|marinasi/i, `snack must not get seasoning hook: ${snack.open}`);
+      const choco = pickHook(id("( BELI 1 GRATIS 1) Coklat Dubai Chewy Chooki Pistachio Khunafa", "Lainnya"), i);
+      assert.doesNotMatch(choco.open, /bumbu dapur|marinasi/i, `chocolate must not get seasoning hook: ${choco.open}`);
+    }
+  });
   it("tagsFor(makanan) = food tags + #linkdiobio", () => {
     const t = tagsFor("makanan");
     assert.ok(t.some((x) => /camilan|makanan|snack|kuliner/.test(x)), `expected food tags, got ${t}`);

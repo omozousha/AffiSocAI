@@ -35,7 +35,7 @@ import { aggregatePerf, HOOK_PERF_KEY } from "./hook-perf.ts";
 import { getTopHooksForPrompt, chooseFewShotHooks, type RankedHook, DEFAULT_WEIGHTS, tuneEngagementWeights, calculateEngagementScore, type EngagementWeights } from "./engagement-engine.ts";
 import { buildMysteryCaption, MYSTERY_PLATFORMS, topicFor } from "./mystery-caption.ts";
 import { fetchTopTrends, cachedTrends } from "./trends.ts";
-import { smartCaption, composeSmartBody } from "./smart-caption.ts";
+import { smartCaption, composeSmartBody, typeMismatch } from "./smart-caption.ts";
 import { listProviders, getProvider } from "./registry.ts";
 import { logActivity } from "./activity-log.ts";
 import type { SocialContent, SocialProvider } from "./types.ts";
@@ -829,20 +829,32 @@ async function preparePost(slot: SlotRow): Promise<PreparedPost> {
       message: `link ${link.id}: AI story (${story.hook.slice(0, 40)}…) for all ${targets.length} platforms${used.length > 0 ? ` [few-shot: ${used.length} hooks]` : ""}` });
   }
   const trendTags = cachedTrends(2).map((t) => t.tag);
+  const ctype = detectType(idForImg);
+  const linkInfo = {
+    short_url: link.short_url,
+    resolved_url: link.resolved_url,
+    shopee_shop_id: link.shopee_shop_id,
+    shopee_item_id: link.shopee_item_id,
+    shop: link.shop,
+    product: link.product,
+    image_url: link.image_url,
+    kategori: link.kategori ?? null,
+    sheet_id: link.sheet_id ?? null,
+  };
   const prepared: PreparedPost = { link_id: link.id, targets: [] };
   for (const target of targets) {
-    let draft = buildMysteryCaption(target.platform, {
-      short_url: link.short_url,
-      resolved_url: link.resolved_url,
-      shopee_shop_id: link.shopee_shop_id,
-      shopee_item_id: link.shopee_item_id,
-      shop: link.shop,
-      product: link.product,
-      image_url: link.image_url,
-      kategori: link.kategori ?? null,
-      sheet_id: link.sheet_id ?? null,
-    }, publishIndex, trendTags);
+    let draft = buildMysteryCaption(target.platform, linkInfo, publishIndex, trendTags);
     if (story) draft = { ...draft, body: composeSmartBody(story, target.platform, detectType(idForImg), link.sheet_id ?? null, trendTags) };
+    // LINGKUP 7 — publish-time belt: if the composed body still does not
+    // match the product type (e.g. generic "barang" copy on food), rebuild
+    // from the NEXT type-correct template variant instead of shipping it.
+    const bad = typeMismatch(ctype, draft.body);
+    if (bad.length > 0) {
+      const alt = buildMysteryCaption(target.platform, linkInfo, publishIndex + 1, trendTags);
+      logActivity({ level: "warn", source: "system", event: "caption.guard",
+        message: `link ${link.id} ${target.platform}: ${bad.join(", ")} → template variant fallback` });
+      draft = alt;
+    }
 
     let text = draft.body;
     if (target.platform === "threads" && link.short_url && !text.includes(link.short_url)) {
