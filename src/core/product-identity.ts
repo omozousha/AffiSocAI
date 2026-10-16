@@ -88,7 +88,12 @@ export function detectType(id: ProductIdentity): ProductType {
   if (/SEPATU|SANDAL|SHOES|SNEAKERS|SLIPON/.test(hay)) return "sepatu";
   // ORDER MATTERS + WORD BOUNDARIES: "SERBAGUNA" contains "BAG", "KERTAS"
   // contains "TAS" — bare substrings turn a folding chair into a bag.
-  if (/KURSI\s*LIPAT|FOLDING\s*CHAIR/.test(hay)) return "outdoor";
+  // A folding chair is only OUTDOOR gear when the title says so; "Kursi Lipat
+  // Lesehan Sofa Lantai" is living-room furniture (proven live: content
+  // 296-298 shipped a camping/cold-mountain hook for a floor chair).
+  if (/KURSI\s*LIPAT|FOLDING\s*CHAIR/.test(hay)) {
+    return /CAMPING|GUNUNG|OUTDOOR|TENDA|HIKING|PICNIC|TRAVEL|MENDALI|PANCING|FISHING/.test(hay) ? "outdoor" : "rumah";
+  }
   if (/\bTAS\b|BACKPACK|RANSEL|SELEMPANG|\bBAGS?\b|DOMPET|WALLET/.test(hay)) return "tas";
   if (/GADGET|ELEKTRONIK|HP|PHONE|CHARGER|EARPHONE|SPEAKER|HEADPHONE|MOUSE|KEYBOARD|KABEL/.test(hay)) return "gadget";
   if (/SKINCARE|BEAUTY|MAKEUP|SERUM|MOISTURIZER|TONER|SABUN|BEDAK|LIPSTIK|PARFUM/.test(hay)) return "skincare";
